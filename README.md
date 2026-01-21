@@ -16,13 +16,13 @@ When working with Three.js, Claude Code starts with general programming knowledg
 Clone this repository into your project or copy the `.claude/skills` directory:
 
 ```bash
-git clone https://github.com/pinkforest/threejs-playground.git
+git clone https://github.com/CloudAI-X/threejs-skills.git
 ```
 
 Or add as a submodule:
 
 ```bash
-git submodule add https://github.com/pinkforest/threejs-playground.git
+git submodule add https://github.com/CloudAI-X/threejs-skills.git
 ```
 
 ## Skills Included
