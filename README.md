@@ -1,4 +1,4 @@
-# Three.js Skills for Claude Code
+# Three.js Skills for Claude Code and AdaL
 
 A curated collection of Three.js skill files that provide Claude Code with foundational knowledge for creating 3D elements and interactive experiences.
 
