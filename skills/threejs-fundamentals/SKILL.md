@@ -460,6 +460,44 @@ const textureLoader = new THREE.TextureLoader(manager);
 const gltfLoader = new GLTFLoader(manager);
 ```
 
+## Third-Person Follow Camera
+
+A common pattern for racing games and vehicle simulations:
+
+```javascript
+// When positioning object on a path/track, store the forward direction
+const point = curve.getPointAt(t);
+const tangent = curve.getTangentAt(t);
+
+object.position.copy(point);
+object.forwardDir = tangent.clone().normalize(); // Store for camera use
+
+// Camera follows behind the object
+function updateCamera(object, camera) {
+  const forward = object.forwardDir;
+  const cameraDistance = 12;
+  const cameraHeight = 6;
+  const lookAhead = 5;
+
+  // Position camera behind object (subtract forward direction)
+  const targetPos = object.position
+    .clone()
+    .sub(forward.clone().multiplyScalar(cameraDistance))
+    .add(new THREE.Vector3(0, cameraHeight, 0));
+
+  camera.position.lerp(targetPos, 0.08); // Smooth follow
+
+  // Look ahead of the object
+  const lookTarget = object.position
+    .clone()
+    .add(forward.clone().multiplyScalar(lookAhead))
+    .add(new THREE.Vector3(0, 1, 0));
+  camera.lookAt(lookTarget);
+}
+```
+
+**Key insight:** When using `CatmullRomCurve3.getTangentAt()`, the tangent vector directly represents the forward direction of travel. Use this tangent for camera positioning rather than computing direction from rotation angles, which can be error-prone due to Three.js rotation conventions.
+
 ## Performance Tips
 
 1. **Limit draw calls**: Merge geometries, use instancing, atlas textures
