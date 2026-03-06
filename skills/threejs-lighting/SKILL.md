@@ -1,6 +1,6 @@
 ---
 name: threejs-lighting
-description: Three.js lighting - light types, shadows, environment lighting. Use when adding lights, configuring shadows, setting up IBL, or optimizing lighting performance.
+description: Three.js lighting - light types, shadows, environment lighting. Use when adding lights, configuring shadows, setting up IBL, or optimizing lighting performance. Covers creating directional, point, spot, hemisphere, and area lights; configuring shadow maps, bias settings, and PCF/VSM shadow types; setting up HDR environment maps and image-based lighting; and tuning lighting performance with layers and baked lighting.
 ---
 
 # Three.js Lighting

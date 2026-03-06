@@ -1,6 +1,6 @@
 ---
 name: threejs-materials
-description: Three.js materials - PBR, basic, phong, shader materials, material properties. Use when styling meshes, working with textures, creating custom shaders, or optimizing material performance.
+description: Creates and configures Three.js materials including PBR, basic, phong, and custom GLSL shaders. Applies textures, sets material properties, and optimizes material performance. Use when styling meshes, working with textures, creating custom shaders, or optimizing material performance in Three.js.
 ---
 
 # Three.js Materials

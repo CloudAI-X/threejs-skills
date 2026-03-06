@@ -1,6 +1,6 @@
 ---
 name: threejs-loaders
-description: Three.js asset loading - GLTF, textures, images, models, async patterns. Use when loading 3D models, textures, HDR environments, or managing loading progress.
+description: Loads and parses 3D assets in Three.js — GLTF/GLB models, textures, HDR environments, and other formats (OBJ, FBX, STL, PLY). Handles async loading patterns, caches assets, and tracks loading progress. Use when loading 3D models, applying textures, importing HDR environments, managing loading progress, or handling async asset pipelines in Three.js.
 ---
 
 # Three.js Loaders
@@ -227,19 +227,31 @@ loader.load("model.glb", (gltf) => {
 
 ### GLTF with Draco Compression
 
+Follow these steps in order: validate the decoder path is reachable, configure the loader, then load the model.
+
 ```javascript
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 
+const DRACO_PATH =
+  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/";
+
+// Step 1: Validate the Draco decoder is reachable before proceeding
+await fetch(`${DRACO_PATH}draco_wasm_wrapper.js`, { method: "HEAD" })
+  .then((res) => {
+    if (!res.ok) throw new Error(`Draco decoder unreachable: ${res.status}`);
+    console.log("Draco decoder path verified");
+  });
+
+// Step 2: Configure DRACOLoader and attach it to GLTFLoader
 const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath(
-  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
-);
+dracoLoader.setDecoderPath(DRACO_PATH);
 dracoLoader.preload();
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setDRACOLoader(dracoLoader);
 
+// Step 3: Load the compressed model
 gltfLoader.load("compressed-model.glb", (gltf) => {
   scene.add(gltf.scene);
 });
@@ -247,19 +259,31 @@ gltfLoader.load("compressed-model.glb", (gltf) => {
 
 ### GLTF with KTX2 Textures
 
+Follow these steps in order: validate the transcoder path is reachable, configure the loader, then load the model.
+
 ```javascript
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 
+const TRANSCODER_PATH =
+  "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/";
+
+// Step 1: Validate the KTX2 transcoder is reachable before proceeding
+await fetch(`${TRANSCODER_PATH}basis_transcoder.js`, { method: "HEAD" })
+  .then((res) => {
+    if (!res.ok) throw new Error(`KTX2 transcoder unreachable: ${res.status}`);
+    console.log("KTX2 transcoder path verified");
+  });
+
+// Step 2: Configure KTX2Loader and attach it to GLTFLoader
 const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath(
-  "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/",
-);
+ktx2Loader.setTranscoderPath(TRANSCODER_PATH);
 ktx2Loader.detectSupport(renderer);
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setKTX2Loader(ktx2Loader);
 
+// Step 3: Load the model with KTX2 textures
 gltfLoader.load("model-with-ktx2.glb", (gltf) => {
   scene.add(gltf.scene);
 });

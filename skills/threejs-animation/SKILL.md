@@ -514,6 +514,78 @@ function animate() {
 }
 ```
 
+## Troubleshooting
+
+### Animation Not Playing
+
+```javascript
+// 1. Verify mixer.update() is called every frame with a valid delta
+function animate() {
+  const delta = clock.getDelta(); // Must call getDelta() once per frame
+  mixer.update(delta);            // Must be called every frame
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+// 2. Confirm clip names before playing
+console.log("Available clips:", gltf.animations.map((c) => c.name));
+const clip = THREE.AnimationClip.findByName(gltf.animations, "Walk");
+if (!clip) {
+  console.warn("Clip 'Walk' not found — check the exact name above");
+}
+
+// 3. Confirm the action is actually running
+const action = mixer.clipAction(clip);
+action.play();
+console.log("isRunning:", action.isRunning()); // Should be true
+console.log("weight:", action.getEffectiveWeight()); // Should be > 0
+```
+
+### Animations Playing but No Visible Movement
+
+```javascript
+// 1. Check effective weight — weights must sum > 0
+console.log("effective weight:", action.getEffectiveWeight());
+
+// 2. Check timeScale — 0 freezes playback
+console.log("timeScale:", action.timeScale); // Should be non-zero
+
+// 3. Check paused flag
+console.log("paused:", action.paused); // Should be false
+
+// 4. Ensure mixer root matches the animated object
+// Mixer must be created on the same root that the clip targets
+const mixer = new THREE.AnimationMixer(model); // model = gltf.scene
+```
+
+### Incorrect Bone Targeting
+
+```javascript
+// List all bone names to find the correct identifier
+const skinnedMesh = model.getObjectByProperty("type", "SkinnedMesh");
+skinnedMesh.skeleton.bones.forEach((b) => console.log(b.name));
+
+// Use SkeletonHelper to visualise the rig in-scene
+const helper = new THREE.SkeletonHelper(model);
+scene.add(helper);
+```
+
+### Weight Normalization Issues
+
+```javascript
+// When blending, weights do NOT auto-normalize — set them explicitly
+idleAction.setEffectiveWeight(1 - t);
+walkAction.setEffectiveWeight(t);
+// Total weight should equal 1 to avoid under/over-driven poses
+
+// Verify combined weights
+const total =
+  idleAction.getEffectiveWeight() +
+  walkAction.getEffectiveWeight() +
+  runAction.getEffectiveWeight();
+console.log("Total weight:", total); // Should be ~1
+```
+
 ## Performance Tips
 
 1. **Share clips**: Same AnimationClip can be used on multiple mixers

@@ -1,9 +1,22 @@
 ---
 name: threejs-textures
-description: Three.js textures - texture types, UV mapping, environment maps, texture settings. Use when working with images, UV coordinates, cubemaps, HDR environments, or texture optimization.
+description: Three.js textures skill — load and apply textures, configure UV mapping, set up environment maps and cubemaps, and optimize texture settings for performance. Use when working with images, UV coordinates, cubemaps, HDR environments, or texture optimization.
 ---
 
 # Three.js Textures
+
+## Quick Reference
+
+| Property | Common Values | Notes |
+|---|---|---|
+| `colorSpace` | `THREE.SRGBColorSpace` / default | sRGB for color maps; leave default for data maps |
+| `wrapS` / `wrapT` | `RepeatWrapping`, `ClampToEdgeWrapping`, `MirroredRepeatWrapping` | Set both for tiling |
+| `minFilter` | `LinearMipmapLinearFilter`, `NearestFilter`, `LinearFilter` | Default is `LinearMipmapLinearFilter` |
+| `magFilter` | `LinearFilter`, `NearestFilter` | `NearestFilter` for pixel art |
+| `anisotropy` | `renderer.capabilities.getMaxAnisotropy()` | Sharper at oblique angles |
+| `generateMipmaps` | `true` / `false` | Disable for non-power-of-2 or data textures |
+| `repeat` | `texture.repeat.set(x, y)` | Requires `RepeatWrapping` |
+| `needsUpdate` | `true` | Required after manual data changes |
 
 ## Quick Start
 
@@ -346,7 +359,7 @@ scene.add(cubeCamera);
 // Apply to reflective material
 reflectiveMaterial.envMap = cubeRenderTarget.texture;
 
-// Update in animation loop (expensive!)
+// Update in animation loop
 function animate() {
   // Hide reflective object, update env map, show again
   reflectiveObject.visible = false;
@@ -355,6 +368,43 @@ function animate() {
   reflectiveObject.visible = true;
 }
 ```
+
+### CubeCamera Update Frequency
+
+Updating every frame is expensive (renders the scene 6 times). Choose a strategy based on scene dynamics:
+
+```javascript
+let frameSinceLastUpdate = 0;
+
+function animate() {
+  frameSinceLastUpdate++;
+
+  // Static/slow environments: update every 30 frames (~2× per second at 60 fps)
+  const updateInterval = sceneIsStatic ? 30 : 5;
+
+  if (frameSinceLastUpdate >= updateInterval) {
+    reflectiveObject.visible = false;
+    cubeCamera.position.copy(reflectiveObject.position);
+    cubeCamera.update(renderer, scene);
+    reflectiveObject.visible = true;
+    frameSinceLastUpdate = 0;
+  }
+}
+
+// Alternative: update only when the environment actually changes
+function onEnvironmentChanged() {
+  reflectiveObject.visible = false;
+  cubeCamera.position.copy(reflectiveObject.position);
+  cubeCamera.update(renderer, scene);
+  reflectiveObject.visible = true;
+}
+```
+
+**Decision guide:**
+- **Every frame** — fast-moving reflections required, high-end hardware target only.
+- **Every 5–10 frames** — good balance for interactive scenes with moving objects.
+- **Every 30+ frames / on-demand** — slow or static environments; best for mobile or performance-constrained targets.
+- **Static baked env map** — prefer `PMREMGenerator` from an HDR file when reflections never change.
 
 ## UV Mapping
 
@@ -564,6 +614,24 @@ function disposeMaterial(material) {
   material.dispose();
 }
 ```
+
+### Verifying GPU Memory Release
+
+`texture.dispose()` schedules GPU memory deallocation — the count in `renderer.info.memory.textures` drops on the next render call, not immediately.
+
+```javascript
+// Snapshot texture count before and after a render to confirm release
+const before = renderer.info.memory.textures;
+texture.dispose();
+renderer.render(scene, camera); // triggers actual GPU deallocation
+const after = renderer.info.memory.textures;
+console.log(`Textures released: ${before - after}`); // expect > 0
+
+// Prevent accidental reuse after disposal
+texture = null;
+```
+
+> **Note:** If the count does not decrease, the texture is still referenced by a material or render target. Search for lingering `.map`, `.envMap`, or `.texture` references before disposing.
 
 ### Texture Pooling
 
