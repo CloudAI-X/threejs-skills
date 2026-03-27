@@ -1,0 +1,11 @@
+{
+  "name": "threejs-skills",
+  "description": "Three.js skill collection for Claude Code - scene setup, geometry, materials, lighting, textures, animation, loaders, shaders, post-processing, and interaction",
+  "version": "1.0.0",
+  "author": {
+    "name": "YunosukeYoshino"
+  },
+  "homepage": "https://github.com/YunosukeYoshino/threejs-skills",
+  "repository": "https://github.com/YunosukeYoshino/threejs-skills",
+  "license": "MIT"
+}

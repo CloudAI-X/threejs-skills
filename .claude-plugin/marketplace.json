@@ -1,0 +1,31 @@
+{
+  "name": "threejs-skills",
+  "owner": {
+    "name": "YunosukeYoshino",
+    "url": "https://github.com/YunosukeYoshino"
+  },
+  "metadata": {
+    "description": "Three.js skill collection for Claude Code - scene setup, geometry, materials, lighting, textures, animation, loaders, shaders, post-processing, and interaction",
+    "version": "1.0.0",
+    "repository": "https://github.com/YunosukeYoshino/threejs-skills"
+  },
+  "plugins": [
+    {
+      "name": "threejs-skills",
+      "description": "10 Three.js skills for Claude Code - fundamentals, geometry, materials, lighting, textures, animation, loaders, shaders, post-processing, and interaction",
+      "source": "./",
+      "skills": [
+        "./skills/threejs-fundamentals",
+        "./skills/threejs-geometry",
+        "./skills/threejs-materials",
+        "./skills/threejs-lighting",
+        "./skills/threejs-textures",
+        "./skills/threejs-animation",
+        "./skills/threejs-loaders",
+        "./skills/threejs-shaders",
+        "./skills/threejs-postprocessing",
+        "./skills/threejs-interaction"
+      ]
+    }
+  ]
+}
