@@ -430,6 +430,37 @@ if (intersects.length > 0) {
 }
 ```
 
+## BatchedMesh (r183+)
+
+High-performance batched rendering. Supports per-instance opacity and wireframe materials as of r183.
+
+```javascript
+const batchedMesh = new THREE.BatchedMesh(maxGeometryCount, maxVertexCount, maxIndexCount);
+batchedMesh.material = new THREE.MeshStandardMaterial();
+
+// Add geometries
+const geoId = batchedMesh.addGeometry(boxGeometry);
+const instanceId = batchedMesh.addInstance(geoId);
+
+// Set per-instance transform
+const matrix = new THREE.Matrix4();
+matrix.makeTranslation(5, 0, 0);
+batchedMesh.setMatrixAt(instanceId, matrix);
+
+// Per-instance opacity (r183+)
+batchedMesh.setOpacityAt(instanceId, 0.5);
+
+// Per-instance color
+batchedMesh.setColorAt(instanceId, new THREE.Color(0xff0000));
+
+// Per-instance visibility
+batchedMesh.setVisibleAt(instanceId, true);
+
+scene.add(batchedMesh);
+```
+
+> **r183 note:** BatchedMesh now supports per-instance opacity via `setOpacityAt()` and is compatible with wireframe materials.
+
 ## InstancedBufferGeometry (Advanced)
 
 For custom per-instance attributes beyond transform/color.

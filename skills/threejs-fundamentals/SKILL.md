@@ -323,8 +323,11 @@ m.decompose(position, quaternion, scale);
 // Operations
 m.multiply(m2); // m = m * m2
 m.premultiply(m2); // m = m2 * m
-m.invert();
+m.invert(); // Optimized in r183
 m.transpose();
+
+// Note (r183): decompose() and invert() have been optimized for performance.
+// Camera scale is now excluded from the view matrix calculation.
 
 // Camera matrices
 m.makePerspective(left, right, top, bottom, near, far);
@@ -414,7 +417,30 @@ function dispose() {
 }
 ```
 
-### Clock for Animation
+### Timer for Animation (r183+, recommended)
+
+`THREE.Clock` is deprecated as of r183. Use `Timer` instead:
+
+```javascript
+import { Timer } from "three/addons/misc/Timer.js";
+
+const timer = new Timer();
+
+function animate() {
+  timer.update(); // Must call manually each frame
+  const delta = timer.getDelta(); // Time since last frame (seconds)
+  const elapsed = timer.getElapsed(); // Total time (seconds)
+
+  mesh.rotation.y += delta * 0.5; // Consistent speed regardless of framerate
+
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+```
+
+### Clock for Animation (deprecated in r183)
+
+`Clock` still works but is deprecated. Prefer `Timer` above for new code.
 
 ```javascript
 const clock = new THREE.Clock();

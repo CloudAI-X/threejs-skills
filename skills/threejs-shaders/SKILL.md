@@ -615,6 +615,10 @@ fragmentShader: `
 renderer.debug.checkShaderErrors = true;
 ```
 
+## TSL (Three.js Shading Language) Notes
+
+> **r183 note:** The `Scriptable` node has been removed from TSL. If you were using `ScriptableNode` or `ScriptableValueNode` for dynamic shader composition, migrate to standard TSL node functions and `Fn()` instead.
+
 ## Performance Tips
 
 1. **Minimize uniforms**: Group related values into vectors
