@@ -228,6 +228,10 @@ floor.receiveShadow = true;
 floor.castShadow = false; // Usually false for floors
 ```
 
+### Shadow Color (WebGPU)
+
+> **r183 note (WebGPU):** `shadowMap.color` has been renamed to `shadowMap.transmitted` for the WebGPU renderer. The WebGL renderer is unaffected.
+
 ### Optimizing Shadows
 
 ```javascript
@@ -299,6 +303,8 @@ spotHelper.update();
 ## Environment Lighting (IBL)
 
 Image-Based Lighting using HDR environment maps.
+
+> **r183 note:** `scene.environment` IBL now works with MeshLambertMaterial and MeshPhongMaterial in addition to PBR materials.
 
 ```javascript
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";

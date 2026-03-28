@@ -110,7 +110,7 @@ description: When this skill should be activated
 
 ## Verification
 
-These skills have been audited against the official Three.js documentation (r160+) for:
+These skills have been audited against the official Three.js documentation (r183) for:
 
 - Correct class names and constructor signatures
 - Valid property names and method signatures

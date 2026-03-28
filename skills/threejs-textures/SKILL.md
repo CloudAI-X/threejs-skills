@@ -208,6 +208,8 @@ ktx2Loader.load("texture.ktx2", (texture) => {
 });
 ```
 
+> **r183 note:** KTX2Loader now correctly handles BC3 alpha channels. ISO 21496-1 gainmap metadata is also supported for HDR display.
+
 ## Cube Textures
 
 For environment maps and skyboxes.

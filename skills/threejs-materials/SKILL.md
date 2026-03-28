@@ -70,9 +70,13 @@ const material = new THREE.MeshLambertMaterial({
 });
 ```
 
+> **r183 note:** MeshLambertMaterial now supports `scene.environment` for image-based lighting (IBL). Previously this was limited to MeshStandardMaterial and MeshPhysicalMaterial.
+
 ## MeshPhongMaterial
 
 Specular highlights. Good for shiny, plastic-like surfaces.
+
+> **r183 note:** MeshPhongMaterial now supports `scene.environment` for image-based lighting (IBL), matching Lambert above.
 
 ```javascript
 const material = new THREE.MeshPhongMaterial({
@@ -142,6 +146,7 @@ const material = new THREE.MeshPhysicalMaterial({
   // All MeshStandardMaterial properties plus:
 
   // Clearcoat (car paint, lacquer)
+  // r183: clearcoat now works with rectangular area lights
   clearcoat: 1.0, // 0-1 clearcoat layer strength
   clearcoatRoughness: 0.1,
   clearcoatMap: ccTexture,
@@ -270,6 +275,10 @@ const material = new THREE.PointsMaterial({
 
 const points = new THREE.Points(geometry, material);
 ```
+
+## Line Materials
+
+> **r183 note:** `Line2NodeMaterial.useColor` has been renamed to `vertexColors` for consistency with other materials.
 
 ## LineBasicMaterial & LineDashedMaterial
 
@@ -460,6 +469,7 @@ material.envMap = envMap;
 material.envMapIntensity = 1;
 
 // Or set as scene environment (affects all PBR materials)
+// r183: Also works with MeshLambertMaterial and MeshPhongMaterial
 scene.environment = envMap;
 
 // HDR environment (recommended)

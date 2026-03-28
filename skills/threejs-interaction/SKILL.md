@@ -187,6 +187,20 @@ function animate() {
 }
 ```
 
+#### Programmatic Control (r183+)
+
+OrbitControls now exposes `dolly()`, `pan()`, and `rotate()` methods for programmatic camera movement:
+
+```javascript
+// Programmatic camera manipulation (r183+)
+controls.dolly(2);        // Dolly in/out (positive = closer)
+controls.pan(1, 0);       // Pan left/right, up/down in screen space
+controls.rotate(0.1, 0);  // Rotate azimuth, polar (radians)
+
+// Custom cursor style (r183+)
+controls.cursorStyle = "grab"; // CSS cursor when hovering over controls
+```
+
 ### FlyControls
 
 ```javascript

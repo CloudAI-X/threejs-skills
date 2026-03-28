@@ -9,13 +9,15 @@ description: Three.js animation - keyframe animation, skeletal animation, morph 
 
 ```javascript
 import * as THREE from "three";
+import { Timer } from "three/addons/misc/Timer.js";
 
-// Simple procedural animation
-const clock = new THREE.Clock();
+// Simple procedural animation (Timer recommended in r183+, Clock is deprecated)
+const timer = new Timer();
 
 function animate() {
-  const delta = clock.getDelta();
-  const elapsed = clock.getElapsedTime();
+  timer.update();
+  const delta = timer.getDelta();
+  const elapsed = timer.getElapsed();
 
   mesh.rotation.y += delta;
   mesh.position.y = Math.sin(elapsed) * 0.5;
@@ -114,6 +116,22 @@ const track = new THREE.VectorKeyframeTrack(".position", times, values);
 track.setInterpolation(THREE.InterpolateLinear); // Default
 track.setInterpolation(THREE.InterpolateSmooth); // Cubic spline
 track.setInterpolation(THREE.InterpolateDiscrete); // Step function
+```
+
+### BezierInterpolant (r183+)
+
+Smooth curve interpolation using bezier control points:
+
+```javascript
+// BezierInterpolant provides smooth curves between keyframes,
+// useful for camera paths and character animation easing.
+// Control points define the curve shape between keyframes.
+const interpolant = new THREE.BezierInterpolant(
+  times,   // parameterPositions
+  values,  // sampleValues
+  sampleSize,
+  resultBuffer,
+);
 ```
 
 ## AnimationMixer

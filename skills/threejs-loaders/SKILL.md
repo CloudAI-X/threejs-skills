@@ -245,6 +245,22 @@ gltfLoader.load("compressed-model.glb", (gltf) => {
 });
 ```
 
+### GLTF with Meshopt Compression (r183+)
+
+```javascript
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+
+const gltfLoader = new GLTFLoader();
+gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+
+gltfLoader.load("meshopt-compressed-model.glb", (gltf) => {
+  scene.add(gltf.scene);
+});
+```
+
+> **r183 note:** GLTFLoader now supports `KHR_meshopt_compression` extension natively. Also adds a `getMaterialExtension` helper for accessing material extension data from loaded glTF files.
+
 ### GLTF with KTX2 Textures
 
 ```javascript
@@ -368,6 +384,19 @@ loader.load("model.ply", (geometry) => {
   scene.add(mesh);
 });
 ```
+
+### VRML
+
+```javascript
+import { VRMLLoader } from "three/addons/loaders/VRMLLoader.js";
+
+const loader = new VRMLLoader();
+loader.load("model.wrl", (object) => {
+  scene.add(object);
+});
+```
+
+> **r183 note:** VRMLLoader now supports camera nodes defined in VRML files.
 
 ## Async/Promise Loading
 

@@ -264,6 +264,14 @@ const gammaPass = new ShaderPass(GammaCorrectionShader);
 composer.addPass(gammaPass);
 ```
 
+### Retro Effect (r183+)
+
+```javascript
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+// retroPass provides CRT/retro TV visual effects
+// Available as a built-in pass in r183+
+```
+
 ### Pixelation
 
 ```javascript
@@ -537,6 +545,8 @@ function animate() {
   postProcessing.render();
 }
 ```
+
+> **r183 note:** The `Scriptable` node has been removed from TSL. Use standard TSL node functions and `Fn()` for custom post-processing with the node-based system. `retroPass` has been added as a built-in effect.
 
 ## Performance Tips
 
