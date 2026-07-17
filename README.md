@@ -39,6 +39,7 @@ git submodule add https://github.com/pinkforest/threejs-playground.git
 | **threejs-shaders**        | GLSL basics, ShaderMaterial, uniforms, custom effects                   |
 | **threejs-postprocessing** | EffectComposer, bloom, DOF, screen effects, custom passes               |
 | **threejs-interaction**    | Raycasting, camera controls, mouse/touch input, object selection        |
+| **threejs-ai-creative-coding** | Narrative 3D direction, AI-assisted scene building, subsystem routing |
 
 ## How It Works
 
@@ -48,6 +49,7 @@ Claude Code automatically loads skill files from the `.claude/skills` directory 
 - Add lighting and shadows → `threejs-lighting` is loaded
 - Load a GLTF model → `threejs-loaders` is loaded
 - Create custom visual effects → `threejs-shaders` and `threejs-postprocessing` are loaded
+- Create a cinematic or generative 3D story → `threejs-ai-creative-coding` routes creative work to the relevant Three.js skills
 
 ## Usage Examples
 
