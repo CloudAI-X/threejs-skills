@@ -145,6 +145,39 @@ function onMouseMove(event) {
 }
 ```
 
+### three-mesh-bvh — for complex geometry
+
+Default raycasting tests **every triangle** in the geometry. On a detailed model
+that is unusable at interactive rates. `three-mesh-bvh` builds a bounding volume
+hierarchy so a raycast becomes a tree walk instead — raycasting against 80,000+
+polygons at 60fps.
+
+```javascript
+import {
+  computeBoundsTree, disposeBoundsTree, acceleratedRaycast,
+} from "three-mesh-bvh";
+
+// Patch three.js once, at startup
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+// Build the BVH per geometry (one-time cost, at load)
+mesh.geometry.computeBoundsTree();
+
+// Nearest hit only — lets the BVH prune far more aggressively
+raycaster.firstHitOnly = true;
+
+// Release it with the geometry
+mesh.geometry.disposeBoundsTree();
+```
+
+Use it for detailed loaded models, terrain, and any mesh you raycast against on
+every mousemove. For a handful of simple primitives the default raycaster is
+already fine — the BVH build cost isn't worth it.
+
+In React Three Fiber, drei's `<Bvh>` wrapper applies this to its subtree.
+
 ## Camera Controls
 
 ### OrbitControls
@@ -639,8 +672,9 @@ interaction.addClickable(mesh, (intersect) => {
 1. **Limit raycasts**: Throttle mousemove handlers
 2. **Use layers**: Filter raycast targets
 3. **Simple collision meshes**: Use invisible simpler geometry for raycasting
-4. **Disable controls when not needed**: `controls.enabled = false`
-5. **Batch updates**: Group interaction checks
+4. **Use three-mesh-bvh**: For complex geometry you can't proxy with a simple shape
+5. **Disable controls when not needed**: `controls.enabled = false`
+6. **Batch updates**: Group interaction checks
 
 ```javascript
 // Use simpler geometry for raycasting
@@ -658,3 +692,4 @@ clickables.push(collisionMesh);
 - `threejs-fundamentals` - Camera and scene setup
 - `threejs-animation` - Animating interactions
 - `threejs-shaders` - Visual feedback effects
+- `threejs-performance` - Profiling raycast and frame cost

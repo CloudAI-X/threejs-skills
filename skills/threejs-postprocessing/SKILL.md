@@ -519,32 +519,119 @@ function animate() {
 }
 ```
 
-## WebGPU Post-Processing (Three.js r150+)
+## WebGPU Post-Processing
+
+WebGPU uses the node pipeline, not `EffectComposer`. Effect nodes live in
+`three/addons/tsl/display/*` — they are **not** `three/tsl` exports.
 
 ```javascript
-import { postProcessing } from "three/addons/nodes/Nodes.js";
-import { pass, bloom, dof } from "three/addons/nodes/Nodes.js";
+import { PostProcessing } from "three/webgpu";
+import { pass } from "three/tsl";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { fxaa } from "three/addons/tsl/display/FXAANode.js";
 
-// Using node-based system
+const postProcessing = new PostProcessing(renderer);
+
 const scenePass = pass(scene, camera);
-const bloomNode = bloom(scenePass, 0.5, 0.4, 0.85);
+const scenePassColor = scenePass.getTextureNode();
 
-const postProcessing = new THREE.PostProcessing(renderer);
-postProcessing.outputNode = bloomNode;
+postProcessing.outputNode = fxaa(
+  scenePassColor.add(bloom(scenePassColor, 0.8, 0.4, 0.85)),
+);
 
-// Render
-function animate() {
-  postProcessing.render();
-}
+renderer.setAnimationLoop(() => postProcessing.render());
 ```
+
+See `threejs-webgpu-tsl` for the full node effect list.
+
+## Prefer pmndrs/postprocessing
+
+For WebGL, the third-party `postprocessing` library is usually the better
+choice than the `three/addons` composer. It **merges compatible effects into a
+single fullscreen pass**, where `EffectComposer` runs one pass per effect —
+bloom + vignette + chromatic aberration goes from three fullscreen renders to
+one.
+
+```javascript
+import {
+  EffectComposer, EffectPass, RenderPass,
+  BloomEffect, VignetteEffect, ChromaticAberrationEffect, SMAAEffect,
+} from "postprocessing";
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+// One pass, three effects
+composer.addPass(
+  new EffectPass(
+    camera,
+    new BloomEffect({ luminanceThreshold: 0.9, luminanceSmoothing: 0.3, intensity: 1.0 }),
+    new VignetteEffect(),
+    new ChromaticAberrationEffect(),
+  ),
+);
+
+// Antialiasing last
+composer.addPass(new EffectPass(camera, new SMAAEffect()));
+```
+
+In React Three Fiber use `@react-three/postprocessing`, which wraps the same
+library — see `threejs-react-three-fiber`.
+
+### Selective bloom (pmndrs)
+
+Far simpler than the layer-swapping dance the vanilla composer requires:
+
+```javascript
+import { SelectiveBloomEffect } from "postprocessing";
+
+const bloom = new SelectiveBloomEffect(scene, camera, {
+  luminanceThreshold: 0.9,
+  luminanceSmoothing: 0.3,
+});
+bloom.selection.add(glowingMesh);
+```
+
+## Configure the Renderer for Post-Processing
+
+Once you have a composer, several renderer defaults become wasted work:
+
+```javascript
+const renderer = new THREE.WebGLRenderer({
+  powerPreference: "high-performance",
+  antialias: false, // AA is handled by SMAA/FXAA at the end of the chain
+  stencil: false, // unless a pass needs it
+  depth: false, // the RenderPass target carries depth, not the canvas
+});
+
+// Tone mapping belongs at the END of the pipeline, not on the renderer.
+// Applied early, every subsequent effect operates on already-compressed values.
+renderer.toneMapping = THREE.NoToneMapping;
+```
+
+Then apply tone mapping as the final effect (`ToneMappingEffect` in pmndrs, or a
+`ShaderPass` in the vanilla composer).
 
 ## Performance Tips
 
-1. **Limit passes**: Each pass adds a full-screen render
-2. **Lower resolution**: Use smaller render targets for blur passes
-3. **Disable unused effects**: Toggle passes on/off
-4. **Use FXAA over MSAA**: Less expensive anti-aliasing
-5. **Profile with DevTools**: Check GPU usage
+1. **Merge passes**: Each pass is a full-screen render. Combining effects into
+   one `EffectPass` is the single biggest win.
+2. **Disable multisampling**: `new EffectComposer(renderer, { multisampling: 0 })`
+   — MSAA is redundant once SMAA runs, and expensive. In R3F:
+   `<EffectComposer multisampling={0}>`.
+3. **Render effects at half resolution**: Bloom and blur look fine upscaled, and
+   halving each axis quarters the fill cost — often close to a 2x frame rate win.
+   ```javascript
+   composer.setSize(window.innerWidth / 2, window.innerHeight / 2);
+   ```
+4. **Antialiasing goes last**: post-processing bypasses the canvas's native AA,
+   so without an explicit SMAA/FXAA pass you get aliased output.
+5. **Tune bloom deliberately**: `intensity` 0.5-2.0, `luminanceThreshold` 0.8-1.0,
+   `radius` 0.5-1.0. Lower-resolution bloom is cheaper and usually looks the same.
+6. **Toggle, don't rebuild**: `pass.enabled = false` for adaptive quality.
+7. **Dispose render targets**: `composer.dispose()` on teardown — see
+   `threejs-performance`.
+8. **Profile**: check GPU time with `stats-gl`, not just FPS.
 
 ```javascript
 // Disable pass
@@ -600,3 +687,6 @@ window.addEventListener("resize", onWindowResize);
 - `threejs-shaders` - Custom shader development
 - `threejs-textures` - Render targets
 - `threejs-fundamentals` - Renderer setup
+- `threejs-webgpu-tsl` - Node-based post-processing on WebGPU
+- `threejs-performance` - Measuring whether the pipeline is actually the bottleneck
+- `threejs-react-three-fiber` - `@react-three/postprocessing`

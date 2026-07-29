@@ -38,14 +38,12 @@ scene.add(dirLight);
 
 camera.position.z = 5;
 
-// Animation loop
-function animate() {
-  requestAnimationFrame(animate);
+// Animation loop — prefer setAnimationLoop over requestAnimationFrame
+renderer.setAnimationLoop(() => {
   cube.rotation.x += 0.01;
   cube.rotation.y += 0.01;
   renderer.render(scene, camera);
-}
-animate();
+});
 
 // Handle resize
 window.addEventListener("resize", () => {
@@ -414,20 +412,51 @@ function dispose() {
 }
 ```
 
-### Clock for Animation
+Three.js does **not** garbage-collect GPU resources — anything not disposed
+leaks VRAM for the life of the page. A material can hold textures on a dozen
+named slots, and GLTF textures additionally need
+`texture.source.data.close()`. See `threejs-performance` for a sweep that
+covers all of it.
+
+### The Render Loop
+
+Use `renderer.setAnimationLoop` rather than `requestAnimationFrame`. It handles
+WebXR sessions automatically (where `rAF` does not work) and gives clean
+start/stop control.
 
 ```javascript
 const clock = new THREE.Clock();
 
-function animate() {
+renderer.setAnimationLoop(() => {
   const delta = clock.getDelta(); // Time since last frame (seconds)
   const elapsed = clock.getElapsedTime(); // Total time (seconds)
 
   mesh.rotation.y += delta * 0.5; // Consistent speed regardless of framerate
 
-  requestAnimationFrame(animate);
   renderer.render(scene, camera);
-}
+});
+
+// Stop (e.g. when the canvas scrolls out of view, or on teardown)
+renderer.setAnimationLoop(null);
+```
+
+Always drive animation with `delta`, never a fixed increment — a hard-coded
+`+= 0.01` runs twice as fast on a 120Hz display.
+
+### Handle Context Loss
+
+The GPU context can be lost on tab backgrounding, driver reset, or memory
+pressure. Unhandled, the canvas goes black permanently.
+
+```javascript
+renderer.domElement.addEventListener("webglcontextlost", (event) => {
+  event.preventDefault(); // required, or the context is never restored
+  renderer.setAnimationLoop(null);
+});
+
+renderer.domElement.addEventListener("webglcontextrestored", () => {
+  renderer.setAnimationLoop(animate);
+});
 ```
 
 ### Responsive Canvas
@@ -462,11 +491,22 @@ const gltfLoader = new GLTFLoader(manager);
 
 ## Performance Tips
 
-1. **Limit draw calls**: Merge geometries, use instancing, atlas textures
-2. **Frustum culling**: Enabled by default, ensure bounding boxes are correct
-3. **LOD (Level of Detail)**: Use `THREE.LOD` for distance-based mesh switching
-4. **Object pooling**: Reuse objects instead of creating/destroying
-5. **Avoid `getWorldPosition` in loops**: Cache results
+**Measure first.** `renderer.info` is free and always available — target under
+**100 draw calls per frame**, and watch that the memory counters stay flat:
+
+```javascript
+console.log(renderer.info.render.calls, renderer.info.render.triangles);
+console.log(renderer.info.memory.geometries, renderer.info.memory.textures);
+```
+
+1. **Limit draw calls**: Merge geometries, use instancing/batching, share materials
+2. **Frustum culling**: Enabled by default, ensure bounding volumes are correct
+3. **Clamp pixel ratio**: `setPixelRatio(Math.min(devicePixelRatio, 2))` — the
+   biggest single mobile win, where a DPR of 3 means 9x the pixels
+4. **LOD (Level of Detail)**: Use `THREE.LOD` for distance-based mesh switching
+5. **Object pooling**: Reuse objects instead of creating/destroying
+6. **Avoid `getWorldPosition` in loops**: Cache results
+7. **Dispose everything**: Three.js never garbage-collects GPU resources
 
 ```javascript
 // Merge static geometries
@@ -486,3 +526,7 @@ scene.add(lod);
 - `threejs-geometry` - Geometry creation and manipulation
 - `threejs-materials` - Material types and properties
 - `threejs-lighting` - Light types and shadows
+- `threejs-performance` - Draw call budgets, disposal, profiling tools
+- `threejs-asset-pipeline` - Asset compression and loading strategy
+- `threejs-webgpu-tsl` - WebGPURenderer setup and TSL
+- `threejs-react-three-fiber` - Building the same scenes in React

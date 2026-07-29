@@ -32,6 +32,25 @@ scene.add(directionalLight);
 
 \*RectAreaLight shadows require custom solutions
 
+### The Light Budget
+
+**Keep active lights to 3 or fewer.** Each light is baked into the material's
+shader, so every addition raises the per-fragment cost for every lit object in
+the scene. Past three lights, reach for baked lighting or an environment map
+instead of a fourth light.
+
+Shadows are the expensive part, and not all lights cost the same:
+
+| Light            | Shadow map renders per frame |
+| ---------------- | ---------------------------- |
+| DirectionalLight | 1                            |
+| SpotLight        | 1                            |
+| PointLight       | **6** (one per cube face)    |
+
+That multiplier compounds: two shadow-casting PointLights over 10 casters is
+120 extra draw calls per frame. If you need many small lights, give them
+`castShadow = false` and let one directional light carry the shadowing.
+
 ## AmbientLight
 
 Illuminates all objects equally. No direction, no shadows.
@@ -251,20 +270,115 @@ dirLight.shadow.normalBias = 0.02; // Bias along normal
 // 4096 - very high quality (expensive)
 ```
 
-### Contact Shadows (Fake, Fast)
+### Sizing Shadow Maps
+
+Shadow map memory grows **quadratically** with resolution — 2048 costs 4x what
+1024 does. Pick from the target device, not from what looks best on a desktop.
+
+| Target           | mapSize     |
+| ---------------- | ----------- |
+| Mobile           | 512-1024    |
+| Desktop          | 1024-2048   |
+| Quality-critical | 4096        |
+
+### Disable Shadow Auto-Update for Static Scenes
+
+If the shadow-casting geometry and the light both hold still, re-rendering the
+shadow map every frame is pure waste. Turning it off saves a full shadow pass
+per frame.
 
 ```javascript
-import { ContactShadows } from "three/examples/jsm/objects/ContactShadows.js";
+renderer.shadowMap.autoUpdate = false;
 
-const contactShadows = new ContactShadows({
-  resolution: 512,
-  blur: 2,
-  opacity: 0.5,
-  scale: 10,
-  position: [0, 0, 0],
-});
-scene.add(contactShadows);
+// Render once at startup, then only when something actually moves
+renderer.shadowMap.needsUpdate = true;
 ```
+
+Gotcha: `needsUpdate` is consumed after one frame — set it again on each change.
+This is a large, cheap win for architectural walkthroughs and product viewers
+where only the camera moves.
+
+### Cascaded Shadow Maps (Large Scenes)
+
+One shadow map stretched over a large outdoor scene is either blurry up close or
+wasteful far away. CSM splits the view frustum into cascades with their own
+maps — sharp near the camera, coarse in the distance.
+
+```javascript
+import { CSM } from "three/addons/csm/CSM.js";
+
+const csm = new CSM({
+  camera,
+  parent: scene, // required: CSM adds its own directional lights here
+  maxFar: camera.far,
+  cascades: 4, // desktop: 4, mobile: 2
+  shadowMapSize: 2048,
+  lightDirection: new THREE.Vector3(1, -1, 1).normalize(),
+});
+
+// Every material that receives CSM shadows must be patched
+scene.traverse((child) => {
+  if (child.isMesh) csm.setupMaterial(child.material);
+});
+
+function animate() {
+  csm.update(); // must run each frame, after the camera moves
+  renderer.render(scene, camera);
+}
+```
+
+On WebGPU use `CSMShadowNode` from `three/addons/csm/CSMShadowNode.js` instead —
+`CSM` is WebGL-only.
+
+### Baked Lightmaps (Static Scenes)
+
+Pre-computed lighting is essentially free at render time — no lights, no shadow
+passes, and it can look better than anything realtime. Bake in Blender and load
+the result onto the `lightMap` slot (which needs a second UV channel):
+
+```javascript
+material.lightMap = bakedTexture;
+material.lightMapIntensity = 1.0;
+// lightMap samples uv2 — ensure the geometry has it
+geometry.setAttribute("uv2", geometry.attributes.uv);
+```
+
+In React Three Fiber, `@react-three/lightmap` bakes at load time, which keeps
+some runtime customization:
+
+```jsx
+import { Lightmap } from "@react-three/lightmap";
+
+<Lightmap>
+  <Scene />
+</Lightmap>;
+```
+
+### Fake Shadows (Cheap)
+
+For many scenes a semi-transparent plane with a radial-gradient texture under
+the object reads as a contact shadow convincingly, at effectively zero cost —
+no shadow map, no extra pass.
+
+```javascript
+const shadowPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(4, 4),
+  new THREE.MeshBasicMaterial({
+    map: radialGradientTexture, // white centre → transparent edge
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+  }),
+);
+shadowPlane.rotation.x = -Math.PI / 2;
+shadowPlane.position.y = 0.01; // avoid z-fighting with the floor
+scene.add(shadowPlane);
+```
+
+React Three Fiber users get drei's `<ContactShadows />` and `<AccumulativeShadows />`,
+which are higher quality than a gradient plane and still far cheaper than
+realtime shadows on a complex scene. There is **no** `ContactShadows` addon in
+vanilla three.js.
 
 ## Light Helpers
 
@@ -455,12 +569,15 @@ function animate() {
 
 ## Performance Tips
 
-1. **Limit light count**: Each light adds shader complexity
-2. **Use baked lighting**: For static scenes, bake to textures
-3. **Smaller shadow maps**: 512-1024 often sufficient
-4. **Tight shadow frustums**: Only cover needed area
-5. **Disable unused shadows**: Not all lights need shadows
-6. **Use light layers**: Exclude objects from certain lights
+1. **Limit light count**: 3 or fewer active lights; each one is compiled into every material's shader
+2. **Prefer environment maps to lights**: `scene.environment` gives realistic ambient illumination with no per-light shader cost
+3. **Use baked lighting**: For static scenes, bake to textures — free at render time
+4. **Smaller shadow maps**: 512-1024 often sufficient; cost is quadratic in resolution
+5. **Tight shadow frustums**: Fit to the scene, never leave the defaults
+6. **`renderer.shadowMap.autoUpdate = false`**: For static casters, saves a full shadow pass every frame
+7. **Avoid shadow-casting PointLights**: 6 renders each
+8. **Disable unused shadows**: Small decorative objects rarely need `castShadow`
+9. **Use light layers**: Exclude objects from certain lights
 
 ```javascript
 // Light layers
@@ -479,3 +596,4 @@ decorMesh.castShadow = false; // Small objects often don't need to cast
 - `threejs-materials` - Material light response
 - `threejs-textures` - Lightmaps and environment maps
 - `threejs-postprocessing` - Bloom and other light effects
+- `threejs-performance` - Draw call budgets and profiling
