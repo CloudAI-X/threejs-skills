@@ -252,10 +252,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 
 const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath(
-  "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/",
-);
-ktx2Loader.detectSupport(renderer);
+ktx2Loader.setTranscoderPath("/basis/"); // copy from three/examples/jsm/libs/basis/
+ktx2Loader.detectSupport(renderer); // MANDATORY — picks the target GPU format
 
 const gltfLoader = new GLTFLoader();
 gltfLoader.setKTX2Loader(ktx2Loader);
@@ -264,6 +262,35 @@ gltfLoader.load("model-with-ktx2.glb", (gltf) => {
   scene.add(gltf.scene);
 });
 ```
+
+### GLTF with Meshopt Compression
+
+Meshopt is the alternative to Draco: comparable compression once gzipped, faster
+decode, and a ~30KB decoder instead of Draco's ~200KB WASM.
+
+```javascript
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+
+const gltfLoader = new GLTFLoader();
+gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+```
+
+### Decoder Setup Checklist
+
+Misconfigured decoder paths are the most common "works locally, breaks in
+production" failure:
+
+- Copy `three/examples/jsm/libs/draco/` and `.../basis/` into your public
+  directory as a build step, or point at a **version-pinned** CDN. An unpinned
+  CDN URL will drift out of sync with your three version.
+- `ktx2Loader.detectSupport(renderer)` must run before any KTX2 load.
+- `dracoLoader.preload()` fetches the WASM ahead of the first model, keeping it
+  off the critical path.
+- Decoding happens in Web Workers — it does not block the main thread.
+- Call `dracoLoader.dispose()` / `ktx2Loader.dispose()` when tearing down.
+
+See `threejs-asset-pipeline` for producing the compressed assets and choosing
+between Draco and Meshopt.
 
 ### Process GLTF Content
 
@@ -596,11 +623,14 @@ async function loadWithTimeout(url, timeout = 30000) {
 
 ## Performance Tips
 
-1. **Use compressed formats**: DRACO for geometry, KTX2/Basis for textures
+1. **Use compressed formats**: Draco or Meshopt for geometry, KTX2/Basis for textures
 2. **Load progressively**: Show placeholders while loading
-3. **Lazy load**: Only load what's needed
+3. **Lazy load**: Only load what's needed — defer below-the-fold scenes behind an
+   `IntersectionObserver`, and code-split the `three` import itself
 4. **Use CDN**: Faster asset delivery
 5. **Enable cache**: `THREE.Cache.enabled = true`
+6. **Dispose what you unload**: Removing a model from the scene does not free
+   VRAM — see `threejs-performance`
 
 ```javascript
 // Progressive loading with placeholder
@@ -621,3 +651,5 @@ loadModel("model.glb").then((gltf) => {
 - `threejs-textures` - Texture configuration
 - `threejs-animation` - Playing loaded animations
 - `threejs-materials` - Material from loaded models
+- `threejs-asset-pipeline` - Compressing assets, loading strategy, Core Web Vitals
+- `threejs-performance` - Disposing loaded models without leaking
