@@ -430,6 +430,47 @@ if (intersects.length > 0) {
 }
 ```
 
+## BatchedMesh
+
+`InstancedMesh` needs every instance to share one geometry. `BatchedMesh`
+(r156+) removes that restriction: **many different geometries sharing one
+material, still one draw call**. Reach for it when you have variety that
+instancing can't express.
+
+```javascript
+// (maxInstanceCount, maxVertexCount, maxIndexCount, material)
+const batch = new THREE.BatchedMesh(1000, 30_000, 60_000, sharedMaterial);
+
+// 1. Register unique geometries -> geometry ids
+const boxId = batch.addGeometry(boxGeometry);
+const coneId = batch.addGeometry(coneGeometry);
+
+// 2. Create instances of those geometries -> instance ids
+const a = batch.addInstance(boxId);
+const b = batch.addInstance(coneId);
+
+// 3. Address instances by instance id
+batch.setMatrixAt(a, matrixA);
+batch.setColorAt(b, new THREE.Color(0xff0000));
+batch.setVisibleAt(a, true);
+
+// Swap which geometry an instance draws, at runtime
+batch.setGeometryIdAt(a, coneId);
+
+scene.add(batch);
+```
+
+Note the two-step id model: `addGeometry` returns a **geometry** id and
+`addInstance` returns an **instance** id. `setMatrixAt`/`setColorAt` take the
+instance id.
+
+Reserve capacity up front — the max counts are allocation sizes, and exceeding
+them throws. `batch.perObjectFrustumCulled` and `batch.sortObjects` are on by
+default and give per-instance culling that `mergeGeometries` cannot.
+
+Pair with a `DataArrayTexture` (array texture, sampled by layer index in the
+shader) to get per-instance texture variation without extra texture binds.
+
 ## InstancedBufferGeometry (Advanced)
 
 For custom per-instance attributes beyond transform/color.
@@ -525,11 +566,29 @@ mesh.morphTargetInfluences[0] = 0.5; // 50% blend
 
 ## Performance Tips
 
+**The budget: under 100 draw calls per frame.** Below that, most devices hold
+60fps; above 500 even powerful GPUs struggle. Check with
+`renderer.info.render.calls`.
+
+Choosing a batching strategy:
+
+| Situation                                   | Use                          |
+| ------------------------------------------- | ---------------------------- |
+| Many copies of one geometry, moving          | `InstancedMesh`              |
+| Many *different* geometries, one material    | `BatchedMesh`                |
+| Static geometry that never moves separately  | `mergeGeometries`            |
+| Distance-based detail                        | `THREE.LOD`                  |
+
+`mergeGeometries` gives the fewest draw calls but costs you per-object culling,
+transforms and raycast granularity — merge things that live and die together.
+
 1. **Use indexed geometry**: Reuse vertices with indices
 2. **Merge static meshes**: Reduce draw calls with `mergeGeometries`
-3. **Use InstancedMesh**: For many identical objects
+3. **Use InstancedMesh / BatchedMesh**: For many objects
 4. **Choose appropriate segment counts**: More segments = smoother but slower
-5. **Dispose unused geometry**: `geometry.dispose()`
+5. **Keep bounding volumes accurate**: Frustum culling is free, but only correct
+   if bounds are — call `computeBoundingSphere()` after mutating positions
+6. **Dispose unused geometry**: `geometry.dispose()`
 
 ```javascript
 // Good segment counts for common uses
@@ -546,3 +605,5 @@ geometry.dispose();
 - `threejs-fundamentals` - Scene setup and Object3D
 - `threejs-materials` - Material types for meshes
 - `threejs-shaders` - Custom vertex manipulation
+- `threejs-performance` - Draw call budgets, culling, disposal
+- `threejs-asset-pipeline` - Geometry compression and LOD authoring
