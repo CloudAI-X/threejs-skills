@@ -492,14 +492,35 @@ material.needsUpdate = true; // Only needed for some changes
 
 ## Performance Tips
 
-1. **Reuse materials**: Same material = batched draw calls
-2. **Avoid transparent when possible**: Transparent materials require sorting
-3. **Use alphaTest instead of transparency**: When applicable, faster
-4. **Choose simpler materials**: Basic > Lambert > Phong > Standard > Physical
-5. **Limit active lights**: Each light adds shader complexity
+### Share materials — it's the highest-leverage rule
+
+Three.js batches meshes that use the **same material instance**. A unique
+material per object defeats batching *and* multiplies compiled shader programs,
+each of which is a main-thread compile stall.
 
 ```javascript
-// Material pooling
+// Bad: 500 materials, 500 programs, no batching
+meshes.forEach((m) => (m.material = new THREE.MeshStandardMaterial({ color: "red" })));
+
+// Good: one material, one program, batched
+const shared = new THREE.MeshStandardMaterial({ color: "red" });
+meshes.forEach((m) => (m.material = shared));
+```
+
+Three.js reuses a shader program across materials whose compiled source and
+uniform layout match — so identical settings are effectively free, while
+gratuitous variation (differing `defines`, a map present on one and not another)
+proliferates programs. Watch the count:
+
+```javascript
+console.log(renderer.info.programs.length); // should stabilize, not climb
+```
+
+When you need per-object variation, prefer per-instance data (`setColorAt` on an
+`InstancedMesh`, instanced attributes) over separate materials.
+
+```javascript
+// Material pooling when variation is genuinely needed
 const materialCache = new Map();
 function getMaterial(color) {
   const key = color.toString(16);
@@ -509,12 +530,23 @@ function getMaterial(color) {
   return materialCache.get(key);
 }
 
-// Dispose when done
+// Dispose when done — and dispose the textures hanging off it
 material.dispose();
 ```
+
+### Other
+
+1. **Avoid transparent when possible**: Transparent materials require sorting
+2. **Use alphaTest instead of transparency**: When applicable, faster
+3. **Choose simpler materials**: Basic > Lambert > Phong > Standard > Physical
+4. **Limit active lights**: 3 or fewer; each is compiled into every material
+5. **Don't create materials in a render/animation callback**: a new material each
+   frame means a new program compile each frame
 
 ## See Also
 
 - `threejs-textures` - Texture loading and configuration
 - `threejs-shaders` - Custom shader development
 - `threejs-lighting` - Light interaction with materials
+- `threejs-performance` - Draw call budgets, batching, disposal
+- `threejs-webgpu-tsl` - Node material equivalents on WebGPU
