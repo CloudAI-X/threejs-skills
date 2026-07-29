@@ -615,28 +615,149 @@ fragmentShader: `
 renderer.debug.checkShaderErrors = true;
 ```
 
-## Performance Tips
+## Performance
 
-1. **Minimize uniforms**: Group related values into vectors
-2. **Avoid conditionals**: Use mix/step instead of if/else
-3. **Precalculate**: Move calculations to JS when possible
-4. **Use textures**: For complex functions, use lookup tables
-5. **Limit overdraw**: Avoid transparent objects when possible
+A fragment shader runs once per pixel per fragment — millions of times a frame.
+Small savings compound; branches and texture fetches dominate.
+
+### Use mediump precision on mobile
+
+Mobile GPUs process `mediump` roughly **twice as fast** as `highp`. Reserve
+`highp` for values that genuinely need the range: depth, world-space positions,
+large-magnitude time accumulators.
 
 ```glsl
-// Instead of:
+precision mediump float;
+
+// ...but keep precision where it matters
+varying highp vec3 vWorldPosition;
+```
+
+Desktop GPUs generally ignore the distinction, so this is a mobile-only win —
+but a large one.
+
+### Replace conditionals with mix() and step()
+
+GPUs execute both branches of an `if` when threads in a warp diverge, so the
+branch costs the sum of its sides plus overhead.
+
+```glsl
+// Bad: branching
 if (value > 0.5) {
   color = colorA;
 } else {
   color = colorB;
 }
 
-// Use:
+// Good: branchless
 color = mix(colorB, colorA, step(0.5, value));
 ```
+
+`smoothstep` gives you an antialiased version of the same idea. A branch is
+still worth keeping when it skips genuinely expensive work (a whole texture
+fetch loop) *and* the condition is uniform across the draw.
+
+### Minimize varyings
+
+Varyings consume interpolator slots and bandwidth between the vertex and
+fragment stages. Mobile GPUs are happiest with **fewer than 3**.
+
+```glsl
+// Bad: five varyings
+varying vec3 vPosition;
+varying vec3 vNormal;
+varying vec2 vUv;
+varying vec3 vWorldPosition;
+varying vec4 vColor;
+
+// Better: pack
+varying vec4 vData1; // xy = uv, zw = octahedral-encoded normal
+varying vec4 vData2; // xyz = world position, w = spare
+```
+
+Before packing, check whether you need the value at all — `vPosition` is often
+reconstructible, and `vNormal` may be available as a built-in.
+
+### Pack data into RGBA channels
+
+A data texture holding four values per texel needs a quarter of the fetches of
+four single-channel textures.
+
+```glsl
+vec4 data = texture2D(dataTex, uv);
+float height    = data.r;
+float moisture  = data.g;
+float temp      = data.b;
+float mask      = data.a;
+```
+
+Set `texture.colorSpace = THREE.NoColorSpace` on data textures — sRGB decoding
+would corrupt non-color values.
+
+### Avoid dynamic loops
+
+A loop whose bound is a uniform can't be unrolled, and on older GLSL ES it isn't
+even legal.
+
+```glsl
+// Bad: compiler can't unroll
+for (int i = 0; i < count; i++) { ... }
+
+// Better: constant bound, break early
+const int MAX_STEPS = 16;
+for (int i = 0; i < MAX_STEPS; i++) {
+  if (i >= count) break;
+  ...
+}
+```
+
+Short loops unrolled entirely are faster still.
+
+### Reuse shader programs
+
+Three.js compiles one program per unique shader configuration and reuses it
+across materials that match. Gratuitous variation — different `defines`, a map
+present on one material but not another, per-instance `ShaderMaterial`
+instances — multiplies programs, and each compile is a main-thread stall.
+
+```javascript
+// Watch the count; it should stabilize, not grow
+console.log(renderer.info.programs.length);
+```
+
+Share one `ShaderMaterial` across meshes and drive per-object variation through
+instanced attributes rather than through separate materials.
+
+### Other
+
+1. **Minimize uniforms**: group related scalars into vectors
+2. **Precalculate on the CPU**: anything constant per draw does not belong in the shader
+3. **Use lookup textures**: for expensive analytic functions
+4. **Limit overdraw**: transparent surfaces shade every layer; sort and cull them
+
+## TSL: Write Once, Run on Both Backends
+
+If you are targeting WebGPU — or want the option — prefer **TSL** over raw
+GLSL/WGSL. TSL compiles to WGSL on WebGPU and GLSL on WebGL, so a raw shader
+means maintaining two codebases. It also handles uniforms, attributes and
+varyings for you, and ships a noise library (`mx_noise_float`,
+`mx_fractal_noise_float`).
+
+```javascript
+import { Fn, float, positionLocal, normalWorld, positionViewDirection } from "three/tsl";
+
+const fresnel = Fn(([normal, viewDir, power]) => {
+  return float(1).sub(normal.dot(viewDir).saturate()).pow(power);
+});
+material.emissiveNode = fresnel(normalWorld, positionViewDirection, 3.0);
+```
+
+See `threejs-webgpu-tsl` for the full node API.
 
 ## See Also
 
 - `threejs-materials` - Built-in material types
 - `threejs-postprocessing` - Full-screen shader effects
 - `threejs-textures` - Texture sampling in shaders
+- `threejs-webgpu-tsl` - TSL node shaders and compute
+- `threejs-performance` - Whether the shader is actually your bottleneck
