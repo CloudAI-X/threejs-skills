@@ -40,6 +40,15 @@ git submodule add https://github.com/pinkforest/threejs-playground.git
 | **threejs-postprocessing** | EffectComposer, bloom, DOF, screen effects, custom passes               |
 | **threejs-interaction**    | Raycasting, camera controls, mouse/touch input, object selection        |
 
+### Performance & Platform
+
+| Skill                          | Description                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| **threejs-performance**        | Draw call budgets, instancing vs batching, GPU disposal and leak hunting, profiling |
+| **threejs-asset-pipeline**     | Draco/Meshopt, KTX2 (UASTC vs ETC1S), gltf-transform, lazy loading, Core Web Vitals |
+| **threejs-webgpu-tsl**         | WebGPURenderer, TSL node shaders, compute shaders, GPU particles, node post-processing |
+| **threejs-react-three-fiber**  | useFrame, on-demand rendering, avoiding re-renders, Suspense, drei, cleanup     |
+
 ## How It Works
 
 Claude Code automatically loads skill files from the `.claude/skills` directory when they match the context of your request. When you ask Claude Code to:
@@ -48,6 +57,10 @@ Claude Code automatically loads skill files from the `.claude/skills` directory 
 - Add lighting and shadows → `threejs-lighting` is loaded
 - Load a GLTF model → `threejs-loaders` is loaded
 - Create custom visual effects → `threejs-shaders` and `threejs-postprocessing` are loaded
+- Diagnose a slow scene or a memory leak → `threejs-performance` is loaded
+- Shrink oversized models or textures → `threejs-asset-pipeline` is loaded
+- Target WebGPU or write TSL → `threejs-webgpu-tsl` is loaded
+- Build a scene inside React → `threejs-react-three-fiber` is loaded
 
 ## Usage Examples
 
@@ -110,7 +123,8 @@ description: When this skill should be activated
 
 ## Verification
 
-These skills have been audited against the official Three.js documentation (r160+) for:
+These skills have been audited against the official Three.js documentation (r160+), with the
+performance/platform skills verified against the `three` r185 source and export maps, for:
 
 - Correct class names and constructor signatures
 - Valid property names and method signatures
