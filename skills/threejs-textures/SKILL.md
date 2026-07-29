@@ -194,18 +194,55 @@ texture.colorSpace = THREE.SRGBColorSpace;
 // No need to set needsUpdate - auto-updates
 ```
 
-### Compressed Textures
+### Compressed Textures (KTX2) — the VRAM lever
+
+PNG and JPEG are *file* compression: the GPU stores them fully decompressed. A
+200KB PNG occupies **20MB+ of VRAM**. KTX2/Basis stays compressed on the GPU,
+cutting texture memory roughly **10x**. For any production scene, PBR maps
+should ship as KTX2.
 
 ```javascript
-import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 
 const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath("path/to/basis/");
-ktx2Loader.detectSupport(renderer);
+ktx2Loader.setTranscoderPath("/basis/"); // copy from three/examples/jsm/libs/basis/
+ktx2Loader.detectSupport(renderer); // MANDATORY — picks the target GPU format
 
 ktx2Loader.load("texture.ktx2", (texture) => {
   material.map = texture;
 });
+```
+
+Two Basis modes, chosen at encode time:
+
+- **UASTC** — higher quality, larger files. Use for **normal maps** and hero
+  textures where compression artifacts read as shading errors.
+- **ETC1S** — much smaller, acceptable quality. Use for **diffuse/albedo** and
+  secondary textures.
+
+See `threejs-asset-pipeline` for producing these with `gltf-transform`.
+
+### Array Textures
+
+A `DataArrayTexture` stacks many same-sized textures into indexed layers, so a
+shader can pick one by index — visual variety with a **single** texture bind.
+Pairs naturally with `BatchedMesh`.
+
+```javascript
+const layers = 8;
+const data = new Uint8Array(width * height * 4 * layers);
+// ...fill each layer's slice...
+
+const arrayTexture = new THREE.DataArrayTexture(data, width, height, layers);
+arrayTexture.format = THREE.RGBAFormat;
+arrayTexture.needsUpdate = true;
+```
+
+```glsl
+// GLSL3 (material.glslVersion = THREE.GLSL3)
+precision highp sampler2DArray;
+uniform sampler2DArray uLayers;
+vec4 texel = texture(uLayers, vec3(vUv, layerIndex));
 ```
 
 ## Cube Textures
@@ -565,6 +602,20 @@ function disposeMaterial(material) {
 }
 ```
 
+### ImageBitmap Textures Need close()
+
+`GLTFLoader` decodes textures into `ImageBitmap` objects. `texture.dispose()`
+frees the GPU side but **not** the bitmap — it survives and leaks.
+
+```javascript
+texture.source?.data?.close?.(); // release the ImageBitmap
+texture.dispose(); // release the GPU texture
+```
+
+Always do both when tearing down a loaded GLTF. A generic sweep that catches
+every texture slot (including ones not in the list above) is in
+`threejs-performance`.
+
 ### Texture Pooling
 
 ```javascript
@@ -604,12 +655,17 @@ class TexturePool {
 
 ## Performance Tips
 
-1. **Use power-of-2 dimensions**: 256, 512, 1024, 2048
-2. **Compress textures**: KTX2/Basis for web delivery
-3. **Use texture atlases**: Reduce texture switches
+1. **Compress textures**: KTX2/Basis for web delivery — ~10x less VRAM than
+   PNG/JPEG, which the GPU stores fully decompressed
+2. **Use power-of-2 dimensions**: 256, 512, 1024, 2048
+3. **Use texture atlases or array textures**: Each distinct texture is a bind,
+   and bind overhead is significant on mobile GPUs
 4. **Enable mipmaps**: For distant objects
-5. **Limit texture size**: 2048 usually sufficient for web
-6. **Reuse textures**: Same texture = better batching
+5. **Limit texture size**: 2048 usually sufficient for web; a single 4K texture
+   is 64MB+ of VRAM
+6. **Reuse textures**: Load once, share the instance — same texture = better batching
+7. **Close ImageBitmaps**: `texture.source.data.close()` before `dispose()` for
+   GLTF-loaded textures
 
 ```javascript
 // Check texture memory
@@ -626,3 +682,5 @@ const textureSize = isMobile ? 1024 : 2048;
 - `threejs-materials` - Applying textures to materials
 - `threejs-loaders` - Loading texture files
 - `threejs-shaders` - Custom texture sampling
+- `threejs-asset-pipeline` - Producing KTX2, choosing UASTC vs ETC1S
+- `threejs-performance` - Texture memory leaks and full disposal
