@@ -519,23 +519,41 @@ function animate() {
 }
 ```
 
-## WebGPU Post-Processing (Three.js r150+)
+## WebGPU Post-Processing (node-based)
+
+WebGPU post-processing does **not** go through `EffectComposer`. It uses the
+node system, and the imports come from the `three/webgpu` and `three/tsl` entry
+points — not from `three` itself, and not from any `three/addons/nodes/` path.
 
 ```javascript
-import { postProcessing } from "three/addons/nodes/Nodes.js";
-import { pass, bloom, dof } from "three/addons/nodes/Nodes.js";
+import { WebGPURenderer, PostProcessing } from "three/webgpu";
+import { pass } from "three/tsl";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
 
-// Using node-based system
+const renderer = new WebGPURenderer({ antialias: true });
+await renderer.init();
+
+// pass() renders the scene into a node you can chain effects onto
 const scenePass = pass(scene, camera);
-const bloomNode = bloom(scenePass, 0.5, 0.4, 0.85);
+const bloomNode = bloom(scenePass, 0.5, 0.4, 0.85); // strength, radius, threshold
 
-const postProcessing = new THREE.PostProcessing(renderer);
+const postProcessing = new PostProcessing(renderer);
 postProcessing.outputNode = bloomNode;
 
-// Render
-function animate() {
-  postProcessing.render();
-}
+// Drive it from the renderer's animation loop
+renderer.setAnimationLoop(() => {
+  postProcessing.render(); // replaces renderer.render(scene, camera)
+});
+```
+
+Depth of field needs the pass's viewZ, so it takes an extra argument:
+
+```javascript
+import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
+
+const scenePass = pass(scene, camera);
+// (node, viewZNode, focusDistance, focalLength, bokehScale)
+const dofNode = dof(scenePass, scenePass.getViewZNode(), 10, 1.2, 3);
 ```
 
 ## Performance Tips
