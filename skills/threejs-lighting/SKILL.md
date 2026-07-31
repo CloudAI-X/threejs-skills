@@ -253,17 +253,51 @@ dirLight.shadow.normalBias = 0.02; // Bias along normal
 
 ### Contact Shadows (Fake, Fast)
 
-```javascript
-import { ContactShadows } from "three/examples/jsm/objects/ContactShadows.js";
+> There is no `ContactShadows` class in three.js — that is a
+> `@react-three/drei` component. In vanilla three.js you build the effect
+> yourself. The cheapest version is a radial-gradient blob on a plane:
 
-const contactShadows = new ContactShadows({
-  resolution: 512,
-  blur: 2,
-  opacity: 0.5,
-  scale: 10,
-  position: [0, 0, 0],
-});
-scene.add(contactShadows);
+```javascript
+// Radial-gradient blob texture — no addons, no extra draw passes
+function makeBlobShadow(size = 256) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const g = ctx.createRadialGradient(
+    size / 2, size / 2, 0,
+    size / 2, size / 2, size / 2,
+  );
+  g.addColorStop(0, "rgba(0,0,0,1)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+const shadowPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 10),
+  new THREE.MeshBasicMaterial({
+    map: makeBlobShadow(),
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+  }),
+);
+shadowPlane.rotation.x = -Math.PI / 2;
+shadowPlane.position.y = 0.01; // avoid z-fighting with the ground
+scene.add(shadowPlane);
+```
+
+For shadows that follow the actual silhouette of the object, render the scene
+depth to a render target and blur it with the addon blur shaders — this is what
+the official `webgl_shadow_contact` example does:
+
+```javascript
+import { HorizontalBlurShader } from "three/addons/shaders/HorizontalBlurShader.js";
+import { VerticalBlurShader } from "three/addons/shaders/VerticalBlurShader.js";
 ```
 
 ## Light Helpers
