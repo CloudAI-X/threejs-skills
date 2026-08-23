@@ -576,7 +576,7 @@ const worldPos = getRayPlaneIntersection(mouse, camera, groundPlane);
 ```javascript
 class InteractionManager {
   constructor(camera, renderer, scene) {
-    this.camera = camera;
+    this.mainCamera = camera;
     this.renderer = renderer;
     this.scene = scene;
     this.raycaster = new THREE.Raycaster();
@@ -601,7 +601,7 @@ class InteractionManager {
   }
 
   getIntersects() {
-    this.raycaster.setFromCamera(this.mouse, this.camera);
+    this.raycaster.setFromCamera(this.mouse, this.mainCamera);
     return this.raycaster.intersectObjects(this.clickables, true);
   }
 
