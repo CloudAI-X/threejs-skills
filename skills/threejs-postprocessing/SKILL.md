@@ -519,24 +519,30 @@ function animate() {
 }
 ```
 
-## WebGPU Post-Processing (Three.js r150+)
+## WebGPU Post-Processing (TSL)
 
 ```javascript
-import { postProcessing } from "three/addons/nodes/Nodes.js";
-import { pass, bloom, dof } from "three/addons/nodes/Nodes.js";
+import * as THREE from "three/webgpu";
+import { pass } from "three/tsl";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
 
-// Using node-based system
+const renderer = new THREE.WebGPURenderer({ antialias: true });
+await renderer.init();
+
+const renderPipeline = new THREE.RenderPipeline(renderer);
+
 const scenePass = pass(scene, camera);
-const bloomNode = bloom(scenePass, 0.5, 0.4, 0.85);
+const scenePassColor = scenePass.getTextureNode("output");
+const bloomPass = bloom(scenePassColor, 0.5, 0.4, 0.85); // strength, radius, threshold
 
-const postProcessing = new THREE.PostProcessing(renderer);
-postProcessing.outputNode = bloomNode;
+renderPipeline.outputNode = scenePassColor.add(bloomPass);
 
-// Render
-function animate() {
-  postProcessing.render();
-}
+renderer.setAnimationLoop(() => {
+  renderPipeline.render();
+});
 ```
+
+`RenderPipeline` was called `PostProcessing` before r183. The effect nodes (bloom, dof, ssao, fxaa and more) live in `three/addons/tsl/display/`.
 
 ## Performance Tips
 

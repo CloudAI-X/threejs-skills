@@ -253,18 +253,36 @@ dirLight.shadow.normalBias = 0.02; // Bias along normal
 
 ### Contact Shadows (Fake, Fast)
 
-```javascript
-import { ContactShadows } from "three/examples/jsm/objects/ContactShadows.js";
+three.js has no `ContactShadows` class (that's a `@react-three/drei` component). The cheapest version is a soft blob texture on a plane under the object:
 
-const contactShadows = new ContactShadows({
-  resolution: 512,
-  blur: 2,
-  opacity: 0.5,
-  scale: 10,
-  position: [0, 0, 0],
-});
-scene.add(contactShadows);
+```javascript
+const size = 128;
+const canvas = document.createElement("canvas");
+canvas.width = canvas.height = size;
+const ctx = canvas.getContext("2d");
+const gradient = ctx.createRadialGradient(
+  size / 2, size / 2, 0,
+  size / 2, size / 2, size / 2,
+);
+gradient.addColorStop(0, "rgba(0,0,0,0.6)");
+gradient.addColorStop(1, "rgba(0,0,0,0)");
+ctx.fillStyle = gradient;
+ctx.fillRect(0, 0, size, size);
+
+const blobShadow = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(canvas),
+    transparent: true,
+    depthWrite: false,
+  }),
+);
+blobShadow.rotation.x = -Math.PI / 2;
+blobShadow.position.y = 0.001; // just above the ground, avoids z-fighting
+scene.add(blobShadow);
 ```
+
+For a shadow that follows the object's silhouette, see the official `webgl_shadow_contact` example: it renders depth from below into a render target and blurs it with `HorizontalBlurShader` and `VerticalBlurShader`.
 
 ## Light Helpers
 
