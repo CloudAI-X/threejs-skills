@@ -1,305 +1,269 @@
 ---
 name: threejs-loaders
-description: Three.js asset loading - GLTF, textures, images, models, async patterns. Use when loading 3D models, textures, HDR environments, or managing loading progress.
+description: "Loading three.js assets: glTF with Draco and KTX2 compression, other model formats, textures, HDR and EXR environments, progress, caching, cloning and disposal. Use when loading 3D models, textures or environment maps, or managing loading progress, on WebGL or with WebGPU and TSL."
 ---
 
 # Three.js Loaders
+
+Targets three.js r186. Examples use WebGLRenderer; the WebGPU and TSL section uses WebGPURenderer.
 
 ## Quick Start
 
 ```javascript
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-// Load GLTF model
-const loader = new GLTFLoader();
-loader.load("model.glb", (gltf) => {
-  scene.add(gltf.scene);
-});
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-// Load texture
-const textureLoader = new THREE.TextureLoader();
-const texture = textureLoader.load("texture.jpg");
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture; // glTF PBR materials render black without lights or an environment
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(2, 1.5, 3);
+camera.lookAt(0, 0, 0);
+
+const gltf = await new GLTFLoader().loadAsync("model.glb");
+scene.add(gltf.scene);
+
+function animate() {
+  renderer.render(scene, camera);
+}
+
+renderer.setAnimationLoop(animate);
 ```
 
 ## LoadingManager
 
-Coordinate multiple loaders and track progress.
+One manager coordinates several loaders and reports combined progress. `loadAsync` still rejects on failure; `manager.onError` fires as well.
 
 ```javascript
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
 const manager = new THREE.LoadingManager();
 
-// Callbacks
 manager.onStart = (url, loaded, total) => {
   console.log(`Started loading: ${url}`);
 };
 
-manager.onLoad = () => {
-  console.log("All assets loaded!");
-  startGame();
+manager.onProgress = (url, loaded, total) => {
+  console.log(`Loading: ${((loaded / total) * 100).toFixed(1)}%`);
 };
 
-manager.onProgress = (url, loaded, total) => {
-  const progress = (loaded / total) * 100;
-  console.log(`Loading: ${progress.toFixed(1)}%`);
-  updateProgressBar(progress);
+manager.onLoad = () => {
+  console.log("All assets loaded");
 };
 
 manager.onError = (url) => {
   console.error(`Error loading: ${url}`);
 };
 
-// Use manager with loaders
-const textureLoader = new THREE.TextureLoader(manager);
 const gltfLoader = new GLTFLoader(manager);
+const textureLoader = new THREE.TextureLoader(manager);
 
-// Load assets
-textureLoader.load("texture1.jpg");
-textureLoader.load("texture2.jpg");
-gltfLoader.load("model.glb");
-// onLoad fires when ALL are complete
+// onLoad fires when every tracked item has finished
+await Promise.all([
+  gltfLoader.loadAsync("model.glb"),
+  textureLoader.loadAsync("texture.jpg"),
+  textureLoader.loadAsync("normal.jpg"),
+]);
+```
+
+`manager.abort()` cancels in-flight requests for loaders that load through FileLoader (models, HDR, EXR, KTX2). Loaders that load through an HTML image element, such as TextureLoader, ignore it.
+
+```javascript
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const manager = new THREE.LoadingManager();
+const timeoutId = setTimeout(() => manager.abort(), 30000);
+
+try {
+  const gltf = await new GLTFLoader(manager).loadAsync("model.glb");
+  scene.add(gltf.scene);
+} catch (error) {
+  console.error(error);
+} finally {
+  clearTimeout(timeoutId);
+}
 ```
 
 ## Texture Loading
 
-### TextureLoader
+`TextureLoader.load()` returns the texture immediately and fills it in when the image decodes; assign it right away and the first render picks it up. Adding a map to a material that has already rendered without one needs `material.needsUpdate = true`. `onProgress` is never called for image loading.
 
 ```javascript
-const loader = new THREE.TextureLoader();
-
-// Callback style
-loader.load(
+new THREE.TextureLoader().load(
   "texture.jpg",
-  (texture) => {
-    // onLoad
-    material.map = texture;
-    material.needsUpdate = true;
+  (map) => {
+    map.colorSpace = THREE.SRGBColorSpace; // a color map; scalar maps keep NoColorSpace
+    mesh.material.map = map;
+    mesh.material.needsUpdate = true; // the material rendered without a map before
   },
-  undefined, // onProgress - not supported for image loading
+  undefined, // onProgress: not supported for image loading
   (error) => {
-    // onError
-    console.error("Error loading texture", error);
+    console.error("Could not load texture", error);
   },
 );
-
-// Synchronous (returns texture, loads async)
-const texture = loader.load("texture.jpg");
-material.map = texture;
 ```
 
-### Texture Configuration
+### Texture configuration
 
 ```javascript
-const texture = loader.load("texture.jpg", (tex) => {
-  // Color space (important for color accuracy)
-  tex.colorSpace = THREE.SRGBColorSpace; // For color/albedo maps
-  // tex.colorSpace = THREE.LinearSRGBColorSpace;  // For data maps (normal, roughness)
+const map = new THREE.TextureLoader().load("color.jpg");
+map.colorSpace = THREE.SRGBColorSpace; // LDR color images; scalar maps keep NoColorSpace
 
-  // Wrapping
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  // ClampToEdgeWrapping, RepeatWrapping, MirroredRepeatWrapping
+map.wrapS = THREE.RepeatWrapping; // ClampToEdgeWrapping (default), RepeatWrapping, MirroredRepeatWrapping
+map.wrapT = THREE.RepeatWrapping;
+map.repeat.set(2, 2);
+map.offset.set(0.5, 0.5);
+map.rotation = Math.PI / 4;
+map.center.set(0.5, 0.5);
 
-  // Repeat/offset
-  tex.repeat.set(2, 2);
-  tex.offset.set(0.5, 0.5);
-  tex.rotation = Math.PI / 4;
-  tex.center.set(0.5, 0.5);
+map.minFilter = THREE.LinearMipmapLinearFilter; // default
+map.magFilter = THREE.LinearFilter; // default; NearestFilter for a pixelated look
+map.anisotropy = renderer.capabilities.getMaxAnisotropy(); // sharper textures at grazing angles
 
-  // Filtering
-  tex.minFilter = THREE.LinearMipmapLinearFilter; // Default
-  tex.magFilter = THREE.LinearFilter; // Default
-  // NearestFilter - pixelated
-  // LinearFilter - smooth
-  // LinearMipmapLinearFilter - smooth with mipmaps
-
-  // Anisotropic filtering (sharper at angles)
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-
-  // Flip Y (usually true for standard textures)
-  tex.flipY = true;
-
-  tex.needsUpdate = true;
-});
+mesh.material.map = map;
+// wrap, filters, anisotropy, colorSpace and flipY (true by default) apply at upload: set them before the first render or set map.needsUpdate = true; repeat, offset, rotation and center apply every frame
 ```
+
+Color spaces: LDR color images (albedo, emissive) are `SRGBColorSpace`; scalar maps (normal, bump, roughness, metalness, ao, alpha) keep the default `NoColorSpace`. GLTFLoader sets the correct color spaces for the textures it loads, and the HDR loaders below set `LinearSRGBColorSpace` themselves. A texture you load yourself for a glTF model's material needs `map.flipY = false` to match the textures GLTFLoader loads.
 
 ### CubeTextureLoader
 
-For environment maps and skyboxes.
+For skyboxes and cube environments, six faces in +X, -X, +Y, -Y, +Z, -Z order; the loader sets sRGB itself.
 
 ```javascript
-const loader = new THREE.CubeTextureLoader();
-
-// Load 6 faces
-const cubeTexture = loader.load([
+const cubeTexture = await new THREE.CubeTextureLoader().loadAsync([
   "px.jpg",
-  "nx.jpg", // positive/negative X
+  "nx.jpg",
   "py.jpg",
-  "ny.jpg", // positive/negative Y
+  "ny.jpg",
   "pz.jpg",
-  "nz.jpg", // positive/negative Z
+  "nz.jpg",
 ]);
 
-// Use as background
 scene.background = cubeTexture;
-
-// Use as environment map
 scene.environment = cubeTexture;
-material.envMap = cubeTexture;
 ```
 
-### HDR/EXR Loading
+## HDR Environments
+
+`HDRLoader` (Radiance `.hdr`) and `EXRLoader` return floating-point equirectangular textures. Both renderers prefilter an equirectangular environment themselves, so no PMREM step is needed for a file — set `mapping` and assign it.
 
 ```javascript
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import { EXRLoader } from "three/addons/loaders/EXRLoader.js";
 
-// HDR
-const rgbeLoader = new RGBELoader();
-rgbeLoader.load("environment.hdr", (texture) => {
-  texture.mapping = THREE.EquirectangularReflectionMapping;
-  scene.environment = texture;
-  scene.background = texture;
-});
+const env = await new HDRLoader().loadAsync("environment.hdr");
+env.mapping = THREE.EquirectangularReflectionMapping;
+scene.environment = env;
+scene.background = env; // without mapping, a background texture draws as a flat screen quad
 
-// EXR
-const exrLoader = new EXRLoader();
-exrLoader.load("environment.exr", (texture) => {
-  texture.mapping = THREE.EquirectangularReflectionMapping;
-  scene.environment = texture;
-});
+const exr = await new EXRLoader().loadAsync("environment.exr");
+exr.mapping = THREE.EquirectangularReflectionMapping;
+scene.environment = exr;
 ```
 
-### PMREMGenerator
+Dim the environment with `scene.environmentIntensity` (and rotate it with `scene.environmentRotation`); `material.envMapIntensity` scales only a material's own `envMap`, which stays null on models lit by `scene.environment`.
 
-Generate prefiltered environment maps for PBR.
+`UltraHDRLoader` reads gain-map JPEGs — HDR dynamic range at JPEG file sizes — the same way:
 
 ```javascript
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
+import { UltraHDRLoader } from "three/addons/loaders/UltraHDRLoader.js";
 
-const pmremGenerator = new THREE.PMREMGenerator(renderer);
-pmremGenerator.compileEquirectangularShader();
-
-new RGBELoader().load("environment.hdr", (texture) => {
-  const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-
-  scene.environment = envMap;
-  scene.background = envMap;
-
-  texture.dispose();
-  pmremGenerator.dispose();
-});
+const env = await new UltraHDRLoader().loadAsync("environment.jpg");
+env.mapping = THREE.EquirectangularReflectionMapping;
+scene.environment = env;
 ```
 
-## GLTF/GLB Loading
+Use `PMREMGenerator` for generated environments, not files:
 
-The most common 3D format for web.
+```javascript
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+const room = new RoomEnvironment();
+scene.environment = pmremGenerator.fromScene(room, 0.04).texture;
+room.dispose(); pmremGenerator.dispose(); // the room's geometries and materials, then the generator
+```
+
+## glTF and GLB
+
+The primary format for web delivery. The result carries `scene`, `animations`, `cameras`, `asset` (version, generator) and `userData` (authoring custom data).
 
 ```javascript
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const loader = new GLTFLoader();
+const gltf = await new GLTFLoader().loadAsync("model.glb");
+scene.add(gltf.scene);
 
-loader.load("model.glb", (gltf) => {
-  // The loaded scene
-  const model = gltf.scene;
-  scene.add(model);
+if (gltf.animations.length > 0) {
+  const mixer = new THREE.AnimationMixer(gltf.scene);
+  mixer.clipAction(gltf.animations[0]).play();
+  const timer = new THREE.Timer();
+  timer.connect(document);
 
-  // Animations
-  const animations = gltf.animations;
-  if (animations.length > 0) {
-    const mixer = new THREE.AnimationMixer(model);
-    animations.forEach((clip) => {
-      mixer.clipAction(clip).play();
-    });
+  function animate() {
+    timer.update();
+    mixer.update(timer.getDelta());
+    renderer.render(scene, camera);
   }
 
-  // Cameras (if any)
-  const cameras = gltf.cameras;
-
-  // Asset info
-  console.log(gltf.asset); // Version, generator, etc.
-
-  // User data from Blender/etc
-  console.log(gltf.userData);
-});
+  renderer.setAnimationLoop(animate);
+}
 ```
 
-### GLTF with Draco Compression
+### Draco, meshopt and KTX2 compression
+
+The Draco decoder and the Basis transcoder load from the three package by default; call `setDecoderPath` / `setTranscoderPath` only when you host them yourself, and then pin the path to the three release you ship. A file that requires `EXT_meshopt_compression` or `KHR_meshopt_compression` fails to load unless `setMeshoptDecoder` is set.
 
 ```javascript
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
-const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath(
-  "https://www.gstatic.com/draco/versioned/decoders/1.5.6/",
-);
-dracoLoader.preload();
+const gltfLoader = new GLTFLoader()
+  .setDRACOLoader(new DRACOLoader())
+  .setMeshoptDecoder(MeshoptDecoder)
+  .setKTX2Loader(new KTX2Loader().detectSupport(renderer));
 
-const gltfLoader = new GLTFLoader();
-gltfLoader.setDRACOLoader(dracoLoader);
-
-gltfLoader.load("compressed-model.glb", (gltf) => {
-  scene.add(gltf.scene);
-});
+const gltf = await gltfLoader.loadAsync("compressed-model.glb");
+scene.add(gltf.scene);
 ```
 
-### GLTF with KTX2 Textures
+### Processing loaded content
 
 ```javascript
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 
-const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath(
-  "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/basis/",
-);
-ktx2Loader.detectSupport(renderer);
+const gltf = await new GLTFLoader().loadAsync("model.glb");
+const model = gltf.scene;
 
-const gltfLoader = new GLTFLoader();
-gltfLoader.setKTX2Loader(ktx2Loader);
-
-gltfLoader.load("model-with-ktx2.glb", (gltf) => {
-  scene.add(gltf.scene);
+model.traverse((child) => {
+  if (child.isMesh) {
+    child.castShadow = true; // shadows also need renderer.shadowMap.enabled = true and a light with castShadow
+    child.receiveShadow = true;
+  }
 });
-```
 
-### Process GLTF Content
+model.getObjectByName("Head"); // look up named nodes
 
-```javascript
-loader.load("model.glb", (gltf) => {
-  const model = gltf.scene;
+scene.environmentIntensity = 0.5; // dim scene.environment for this scene
 
-  // Enable shadows
-  model.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-    }
-  });
+// Center the model and scale it into a unit box
+const box = new THREE.Box3().setFromObject(model);
+const center = box.getCenter(new THREE.Vector3());
+const size = box.getSize(new THREE.Vector3());
+const scale = 1 / Math.max(size.x, size.y, size.z);
+model.scale.setScalar(scale);
+model.position.copy(center).multiplyScalar(-scale); // the offset is scaled too
 
-  // Find specific mesh
-  const head = model.getObjectByName("Head");
-
-  // Adjust materials
-  model.traverse((child) => {
-    if (child.isMesh && child.material) {
-      child.material.envMapIntensity = 0.5;
-    }
-  });
-
-  // Center and scale
-  const box = new THREE.Box3().setFromObject(model);
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-
-  model.position.sub(center);
-  const maxDim = Math.max(size.x, size.y, size.z);
-  model.scale.setScalar(1 / maxDim);
-
-  scene.add(model);
-});
+scene.add(model);
 ```
 
 ## Other Model Formats
@@ -307,19 +271,14 @@ loader.load("model.glb", (gltf) => {
 ### OBJ + MTL
 
 ```javascript
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 
-const mtlLoader = new MTLLoader();
-mtlLoader.load("model.mtl", (materials) => {
-  materials.preload();
+const materials = await new MTLLoader().loadAsync("model.mtl");
+materials.preload();
 
-  const objLoader = new OBJLoader();
-  objLoader.setMaterials(materials);
-  objLoader.load("model.obj", (object) => {
-    scene.add(object);
-  });
-});
+const object = await new OBJLoader().setMaterials(materials).loadAsync("model.obj");
+scene.add(object);
 ```
 
 ### FBX
@@ -327,19 +286,13 @@ mtlLoader.load("model.mtl", (materials) => {
 ```javascript
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 
-const loader = new FBXLoader();
-loader.load("model.fbx", (object) => {
-  // FBX often has large scale
-  object.scale.setScalar(0.01);
+const object = await new FBXLoader().loadAsync("model.fbx");
+object.scale.setScalar(0.01); // FBX files are often exported in centimeters
 
-  // Animations
-  const mixer = new THREE.AnimationMixer(object);
-  object.animations.forEach((clip) => {
-    mixer.clipAction(clip).play();
-  });
+const mixer = new THREE.AnimationMixer(object); // call mixer.update(timer.getDelta()) every frame, as in the glTF example
+if (object.animations.length > 0) mixer.clipAction(object.animations[0]).play();
 
-  scene.add(object);
-});
+scene.add(object);
 ```
 
 ### STL
@@ -347,277 +300,201 @@ loader.load("model.fbx", (object) => {
 ```javascript
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 
-const loader = new STLLoader();
-loader.load("model.stl", (geometry) => {
-  const material = new THREE.MeshStandardMaterial({ color: 0x888888 });
-  const mesh = new THREE.Mesh(geometry, material);
-  scene.add(mesh);
-});
+const geometry = await new STLLoader().loadAsync("model.stl");
+scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x888888 })));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+scene.add(new THREE.DirectionalLight(0xffffff, 2)); // lit materials render black without lights; this one shines down from (0, 1, 0)
 ```
 
 ### PLY
 
+The loader honors the file's data types, so `double` properties arrive as attributes backed by a `Float64Array`, which WebGLRenderer cannot upload; convert them to `Float32BufferAttribute` before rendering.
+
 ```javascript
 import { PLYLoader } from "three/addons/loaders/PLYLoader.js";
 
-const loader = new PLYLoader();
-loader.load("model.ply", (geometry) => {
-  geometry.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true });
-  const mesh = new THREE.Mesh(geometry, material);
-  scene.add(mesh);
-});
-```
+const geometry = await new PLYLoader().loadAsync("model.ply");
 
-## Async/Promise Loading
-
-### Promisified Loader
-
-```javascript
-function loadModel(url) {
-  return new Promise((resolve, reject) => {
-    loader.load(url, resolve, undefined, reject);
-  });
-}
-
-// Usage
-async function init() {
-  try {
-    const gltf = await loadModel("model.glb");
-    scene.add(gltf.scene);
-  } catch (error) {
-    console.error("Failed to load model:", error);
-  }
-}
-```
-
-### Load Multiple Assets
-
-```javascript
-async function loadAssets() {
-  const [modelGltf, envTexture, colorTexture] = await Promise.all([
-    loadGLTF("model.glb"),
-    loadRGBE("environment.hdr"),
-    loadTexture("color.jpg"),
-  ]);
-
-  scene.add(modelGltf.scene);
-  scene.environment = envTexture;
-  material.map = colorTexture;
-}
-
-// Helper functions
-function loadGLTF(url) {
-  return new Promise((resolve, reject) => {
-    new GLTFLoader().load(url, resolve, undefined, reject);
-  });
-}
-
-function loadRGBE(url) {
-  return new Promise((resolve, reject) => {
-    new RGBELoader().load(
-      url,
-      (texture) => {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        resolve(texture);
-      },
-      undefined,
-      reject,
-    );
-  });
-}
-
-function loadTexture(url) {
-  return new Promise((resolve, reject) => {
-    new THREE.TextureLoader().load(url, resolve, undefined, reject);
-  });
-}
-```
-
-## Caching
-
-### Built-in Cache
-
-```javascript
-// Enable cache
-THREE.Cache.enabled = true;
-
-// Clear cache
-THREE.Cache.clear();
-
-// Manual cache management
-THREE.Cache.add("key", data);
-THREE.Cache.get("key");
-THREE.Cache.remove("key");
-```
-
-### Custom Asset Manager
-
-```javascript
-class AssetManager {
-  constructor() {
-    this.textures = new Map();
-    this.models = new Map();
-    this.gltfLoader = new GLTFLoader();
-    this.textureLoader = new THREE.TextureLoader();
-  }
-
-  async loadTexture(key, url) {
-    if (this.textures.has(key)) {
-      return this.textures.get(key);
-    }
-
-    const texture = await new Promise((resolve, reject) => {
-      this.textureLoader.load(url, resolve, undefined, reject);
-    });
-
-    this.textures.set(key, texture);
-    return texture;
-  }
-
-  async loadModel(key, url) {
-    if (this.models.has(key)) {
-      return this.models.get(key).clone();
-    }
-
-    const gltf = await new Promise((resolve, reject) => {
-      this.gltfLoader.load(url, resolve, undefined, reject);
-    });
-
-    this.models.set(key, gltf.scene);
-    return gltf.scene.clone();
-  }
-
-  dispose() {
-    this.textures.forEach((t) => t.dispose());
-    this.textures.clear();
-    this.models.clear();
+for (const name of Object.keys(geometry.attributes)) {
+  const attribute = geometry.getAttribute(name);
+  if (attribute.array instanceof Float64Array) {
+    geometry.setAttribute(name, new THREE.Float32BufferAttribute(attribute.array, attribute.itemSize));
   }
 }
 
-// Usage
-const assets = new AssetManager();
-const texture = await assets.loadTexture("brick", "brick.jpg");
-const model = await assets.loadModel("tree", "tree.glb");
+if (!geometry.hasAttribute("normal")) geometry.computeVertexNormals(); // keep the file's own normals
+const material = new THREE.MeshStandardMaterial({ vertexColors: geometry.hasAttribute("color") }); // vertexColors without a color attribute renders black
+scene.add(new THREE.Mesh(geometry, material));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1));
+scene.add(new THREE.DirectionalLight(0xffffff, 2)); // lit materials render black without lights; this one shines down from (0, 1, 0)
 ```
 
-## Loading from Different Sources
-
-### Data URL / Base64
+### USD
 
 ```javascript
-const loader = new THREE.TextureLoader();
-const texture = loader.load("data:image/png;base64,iVBORw0KGgo...");
+import { USDLoader } from "three/addons/loaders/USDLoader.js";
+
+const model = await new USDLoader().loadAsync("model.usdz"); // USD, USDA, USDC and USDZ archives
+scene.add(model);
 ```
 
-### Blob URL
+## Async Patterns and Custom Sources
+
+Load independent assets in parallel:
 
 ```javascript
-async function loadFromBlob(blob) {
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
+
+const [model, environment, colorMap] = await Promise.all([
+  new GLTFLoader().loadAsync("model.glb"),
+  new HDRLoader().loadAsync("environment.hdr"),
+  new THREE.TextureLoader().loadAsync("color.jpg"),
+]);
+
+environment.mapping = THREE.EquirectangularReflectionMapping;
+colorMap.colorSpace = THREE.SRGBColorSpace;
+
+scene.add(model.scene);
+scene.environment = environment;
+```
+
+Parse data you already hold (a downloaded file, a file input, a database record):
+
+```javascript
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const response = await fetch("model.glb");
+const buffer = await response.arrayBuffer();
+
+const gltf = await new GLTFLoader().parseAsync(buffer, "");
+scene.add(gltf.scene);
+```
+
+Blob URLs and data URLs work as loader URLs:
+
+```javascript
+async function loadTextureFromBlob(blob) {
   const url = URL.createObjectURL(blob);
-  const texture = await loadTexture(url);
+  const texture = await new THREE.TextureLoader().loadAsync(url);
   URL.revokeObjectURL(url);
   return texture;
 }
 ```
 
-### ArrayBuffer
+Prefix paths and rewrite URLs through the manager:
 
 ```javascript
-// From fetch
-const response = await fetch("model.glb");
-const buffer = await response.arrayBuffer();
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-// Parse with loader
 const loader = new GLTFLoader();
-loader.parse(buffer, "", (gltf) => {
-  scene.add(gltf.scene);
-});
+loader.setPath("assets/models/"); // prefix for the URL you pass to load
+loader.setResourcePath("assets/textures/"); // where the file's own references resolve
+const gltf = await loader.loadAsync("model.glb"); // loads assets/models/model.glb
+
+const manager = new THREE.LoadingManager();
+manager.setURLModifier((url) => url.replace("assets/", "https://cdn.example.com/assets/"));
+const cdnGltf = await new GLTFLoader(manager).loadAsync("assets/models/model.glb"); // fetched from https://cdn.example.com/assets/models/model.glb
 ```
 
-### Custom Path/URL
+Enable the shared cache to serve repeated URLs from memory:
 
 ```javascript
-// Set base path
-loader.setPath("assets/models/");
-loader.load("model.glb"); // Loads from assets/models/model.glb
-
-// Set resource path (for textures referenced in model)
-loader.setResourcePath("assets/textures/");
-
-// Custom URL modifier
-manager.setURLModifier((url) => {
-  return `https://cdn.example.com/${url}`;
-});
+THREE.Cache.enabled = true;
+THREE.Cache.clear(); // empty it when you need to force reloads
 ```
 
-## Error Handling
+Keep payloads small — Draco for geometry, KTX2 for textures — and show a placeholder mesh while the real model loads, swapping it in once loading resolves.
+
+## Cloning and Disposal
+
+`Object3D.clone()` on a skinned model shares the skeleton: every copy stays bound to the original's bones, so copies follow the original and ignore their own animation. Use `SkeletonUtils.clone()` for instances.
 
 ```javascript
-// Graceful fallback
-async function loadWithFallback(primaryUrl, fallbackUrl) {
-  try {
-    return await loadModel(primaryUrl);
-  } catch (error) {
-    console.warn(`Primary failed, trying fallback: ${error}`);
-    return await loadModel(fallbackUrl);
-  }
-}
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
 
-// Retry logic
-async function loadWithRetry(url, maxRetries = 3) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await loadModel(url);
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+const gltf = await new GLTFLoader().loadAsync("character.glb");
+scene.add(gltf.scene);
+
+const copy = SkeletonUtils.clone(gltf.scene);
+scene.add(copy);
+```
+
+`object.dispose()` frees renderer-side state for that object only (WebGPU bindings, InstancedMesh buffers) and does not visit children or dispose geometry, materials or textures — traverse the subtree:
+
+```javascript
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const gltf = await new GLTFLoader().loadAsync("model.glb");
+const model = gltf.scene;
+scene.add(model);
+
+// ... later
+scene.remove(model);
+model.traverse((child) => {
+  child.dispose(); // per-object renderer state: InstancedMesh buffers, WebGPU bindings
+  if (child.geometry) { // meshes, lines and points
+    child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose();
+      }
+      material.dispose();
     }
   }
-}
-
-// Timeout
-async function loadWithTimeout(url, timeout = 30000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    if (error.name === "AbortError") {
-      throw new Error("Loading timed out");
-    }
-    throw error;
-  }
-}
-```
-
-## Performance Tips
-
-1. **Use compressed formats**: DRACO for geometry, KTX2/Basis for textures
-2. **Load progressively**: Show placeholders while loading
-3. **Lazy load**: Only load what's needed
-4. **Use CDN**: Faster asset delivery
-5. **Enable cache**: `THREE.Cache.enabled = true`
-
-```javascript
-// Progressive loading with placeholder
-const placeholder = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshBasicMaterial({ wireframe: true }),
-);
-scene.add(placeholder);
-
-loadModel("model.glb").then((gltf) => {
-  scene.remove(placeholder);
-  scene.add(gltf.scene);
 });
 ```
+
+## WebGPU and TSL
+
+```javascript
+import * as THREE from "three/webgpu";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+const renderer = new THREE.WebGPURenderer({ antialias: true });
+await renderer.init(); // before any other use of the renderer
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111827); // the WebGPU canvas is transparent by default
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(2, 1.5, 3);
+camera.lookAt(0, 0, 0);
+const gltf = await new GLTFLoader().loadAsync("model.glb"); // loaded materials become node materials automatically
+scene.add(gltf.scene);
+function animate() { renderer.render(scene, camera); } renderer.setAnimationLoop(animate);
+```
+
+- `ktx2Loader.detectSupport(renderer)` and the `PMREMGenerator` methods (`fromScene`, `fromEquirectangular`, `fromCubemap`) throw before `await renderer.init()`. Max anisotropy is `renderer.getMaxAnisotropy()`; `renderer.capabilities` does not exist under WebGPURenderer.
+- Gaussian splats: `SPLATLoader`, `SPZLoader`, `KSPLATLoader` and `GaussianSplatPLYLoader` load data for `new GaussianSplat(data)` from `three/addons/objects/GaussianSplat.js`, which requires WebGPURenderer.
+
+## Common Mistakes
+
+- `import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"` → `import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"`: the `three/examples/jsm/` specifier does not resolve under the import map three.js documents.
+- `import { RGBELoader } from "three/addons/loaders/RGBELoader.js"` → `import { HDRLoader } from "three/addons/loaders/HDRLoader.js"`: renamed from RGBELoader in r180; the old class warns on every construction.
+- `new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject))` → `loader.loadAsync(url)`: every loader already implements loadAsync, which rejects on error.
+- `material.map = new THREE.TextureLoader().load("color.jpg")` → `const map = new THREE.TextureLoader().load("color.jpg"); map.colorSpace = THREE.SRGBColorSpace; material.map = map;`: a loaded color map defaults to NoColorSpace and renders washed out.
+- `normalMap.colorSpace = THREE.LinearSRGBColorSpace` → `normalMap.colorSpace = THREE.NoColorSpace`: scalar maps (normal, bump, roughness, metalness, ao, alpha) keep NoColorSpace; LinearSRGBColorSpace is for linear color data.
+- `texture.encoding = THREE.sRGBEncoding` → `texture.colorSpace = THREE.SRGBColorSpace`: encoding and sRGBEncoding no longer exist, so the old line leaves the map at NoColorSpace and it renders washed out.
+- `child.material.envMapIntensity = 0.5` → `scene.environmentIntensity = 0.5`: envMapIntensity scales only material.envMap, which stays null when the model is lit by scene.environment.
+- `scene.environment = pmremGenerator.fromEquirectangular(hdrTexture).texture` → `hdrTexture.mapping = THREE.EquirectangularReflectionMapping; scene.environment = hdrTexture;`: both renderers run that PMREM step themselves for an equirectangular texture, so the manual pass only adds code and a render target to dispose.
+- `scene.background = hdrTexture` → `hdrTexture.mapping = THREE.EquirectangularReflectionMapping; scene.background = hdrTexture;`: without the mapping, a background texture draws as a flat screen quad.
+- `ktx2Loader.setTranscoderPath(pathFromAnotherRelease)` → `const ktx2Loader = new KTX2Loader().detectSupport(renderer)`: the Basis transcoder and the Draco decoder load from the three package by default; a path pinned to another release mismatches the loader.
+- `ktx2Loader.detectSupportAsync(renderer)` → `await renderer.init(); ktx2Loader.detectSupport(renderer);`: detectSupportAsync is deprecated in r181; call detectSupport once the renderer is initialized.
+- `renderer.capabilities.getMaxAnisotropy()` → `renderer.getMaxAnisotropy()`: capabilities exists on WebGLRenderer only; under WebGPURenderer use the renderer method.
+- `scene.add(new THREE.Mesh(await new PLYLoader().loadAsync("scan.ply"), material))` → `const geometry = await new PLYLoader().loadAsync("scan.ply"); for (const [name, a] of Object.entries(geometry.attributes)) if (a.array instanceof Float64Array) geometry.setAttribute(name, new THREE.Float32BufferAttribute(a.array, a.itemSize)); scene.add(new THREE.Mesh(geometry, material));`: PLYLoader keeps double properties as Float64 attributes, which WebGLRenderer cannot upload (it throws Unsupported buffer data format).
+- `gltf.scene.clone()` → `SkeletonUtils.clone(gltf.scene)`: Object3D.clone() shares the skeleton, so every copy stays bound to the original's bones and follows its animation.
+- `gltf.scene.dispose()` → `gltf.scene.traverse((child) => { child.geometry?.dispose(); for (const material of [child.material ?? []].flat()) { for (const value of Object.values(material)) if (value?.isTexture) value.dispose(); material.dispose(); } child.dispose(); })`: Object3D.dispose() frees renderer state for that object only, never its geometry, materials or textures, and material.dispose() does not free the material's textures.
+- `fetch(url, { signal: controller.signal })` → `setTimeout(() => manager.abort(), 30000)`: loaders are cancelled through their LoadingManager, which aborts in-flight FileLoader requests.
+- `new USDZLoader()` → `new USDLoader()`: deprecated in r179; USDLoader reads USD, USDA, USDC and USDZ.
 
 ## See Also
 
-- `threejs-textures` - Texture configuration
-- `threejs-animation` - Playing loaded animations
-- `threejs-materials` - Material from loaded models
+- `threejs-fundamentals` - renderer setup, resize handling and the app scaffold around loaded assets
+- `threejs-textures` - texture properties, color spaces and compression in depth
+- `threejs-materials` - adjusting the materials loaded models come with
+- `threejs-animation` - AnimationMixer, clips and skinned-mesh playback
