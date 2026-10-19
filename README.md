@@ -2,7 +2,7 @@
 
 Skill files that give Claude Code current, verified knowledge of three.js, so the code it writes runs on the release you actually install.
 
-The skills target **three.js r186** (`three@0.186`). Every example outside the WebGPU and TSL section uses `WebGLRenderer`; that section, present in every skill, uses `WebGPURenderer`.
+The skills target **three.js r186** (`three@0.186`), React Three Fiber 9.8 with drei 10.7, and gltf-transform 4.5. Rendering examples use `WebGLRenderer`, directly or through React Three Fiber; the WebGPU and TSL section in every skill covers `WebGPURenderer`.
 
 ## Why
 
@@ -42,6 +42,9 @@ mkdir -p .claude/skills && cp -r threejs-skills/skills/* .claude/skills/
 | **threejs-shaders**        | ShaderMaterial and RawShaderMaterial, shader chunks, TSL and node materials     |
 | **threejs-postprocessing** | EffectComposer, built-in renderer effects, the WebGPU RenderPipeline            |
 | **threejs-interaction**    | Raycasting, camera controls, transform gizmos, drag and box selection           |
+| **threejs-performance**    | Measuring frame cost, draw calls, GPU memory, fill rate, compile stalls        |
+| **threejs-react-three-fiber** | React Three Fiber 9 and a verified set of drei helpers, on WebGL or WebGPU |
+| **threejs-asset-pipeline** | gltf-transform: Draco, meshopt, KTX2, WebP, and the matching loader setup      |
 
 ## How It Works
 
@@ -51,6 +54,9 @@ Claude Code loads a skill when your request matches its description. When you as
 - add lights and shadows → `threejs-lighting`
 - load a glTF model → `threejs-loaders`
 - write a custom shader or screen effect → `threejs-shaders` and `threejs-postprocessing`
+- make a slow scene faster → `threejs-performance`
+- build the scene with React → `threejs-react-three-fiber`
+- shrink a glTF before shipping it → `threejs-asset-pipeline`
 
 ## Skill File Structure
 
@@ -75,12 +81,13 @@ Targets three.js r186. Examples use WebGLRenderer; the WebGPU and TSL section us
 
 ## Verification
 
-The r186 rewrite was checked against the published `three@0.186.1` package and the official Migration Guide:
+The skills were checked against the published `three@0.186.1` package and the official Migration Guide, and against `@react-three/fiber@9.8.2`, `@react-three/drei@10.7.9`, `@gltf-transform/cli@4.5.1` and `gltfjsx@6.5.3` where they apply:
 
-- every import path and every `THREE.*` class used in an example exists in the package
+- every three.js, React Three Fiber, drei and gltf-transform import path, and every `THREE.*` class used in an example, exists in its package
 - every JavaScript block parses as an ES module
 - shader chunk names exist, and no removed or renamed API appears in example code
-- every skill was reviewed against the three.js source, with rendering, timing and shader claims measured where possible
+- every gltf-transform command and flag exists in the CLI, and every React Three Fiber element maps to a three.js class
+- every skill was reviewed against the library source, with rendering, timing and shader claims measured where possible
 
 If you find something that is wrong on the current release, please open an issue with the skill name, the line and the three.js version you use.
 
