@@ -387,7 +387,7 @@ material.aoMapIntensity = 1;
 
 ## Disposal and Memory
 
-`texture.dispose()` frees the GPU upload; the image object remains. Dispose only textures that no other material still uses:
+`texture.dispose()` frees the GPU upload once no other undisposed texture shares it (the atlas clones above share one); the image object remains. Dispose only textures that no other material still uses:
 
 ```javascript
 function disposeMaterial(material) {
@@ -497,3 +497,4 @@ mesh.visible = true;
 - `threejs-loaders` — loading managers, glTF models, and the loader family generally.
 - `threejs-shaders` — custom GLSL texture sampling under WebGLRenderer.
 - `threejs-lighting` — environment lighting and light units.
+- `threejs-asset-pipeline` — encoding a model's textures to KTX2, WebP or AVIF with gltf-transform.

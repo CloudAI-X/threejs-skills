@@ -497,3 +497,4 @@ renderer.setAnimationLoop(function animate() {
 - `threejs-animation` - animating objects in response to interaction
 - `threejs-postprocessing` - outline and bloom effects for selection highlights
 - `threejs-loaders` - loading the glTF models you make interactive
+- `threejs-react-three-fiber` - pointer-event props and drei controls when the scene is written in React

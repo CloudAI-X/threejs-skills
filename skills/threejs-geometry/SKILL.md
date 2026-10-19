@@ -1,6 +1,6 @@
 ---
 name: threejs-geometry
-description: "Creating and shaping three.js geometry: built-in shapes, 3D text, vertex buffers and attributes, merging, instancing, batching, point clouds and lines, on WebGL or with WebGPU and TSL. Use when building 3D shapes or text, custom vertex data, custom meshes, reducing draw calls, or point clouds."
+description: "Creating and shaping three.js geometry: built-in shapes, 3D text, vertex buffers and attributes, merging, instancing, batching, point clouds and lines, on WebGL or with WebGPU and TSL. Use when building 3D shapes or text, custom vertex data, custom meshes, instanced meshes, or point clouds."
 ---
 
 # Three.js Geometry
@@ -404,7 +404,7 @@ scene.add(mesh);
 ```javascript
 scene.remove(mesh);
 mesh.dispose(); // frees renderer state kept for this object only, not children or shared resources
-mesh.geometry.dispose(); // frees the GPU buffers, provided no other mesh shares the geometry
+mesh.geometry.dispose(); // frees the GPU buffers at once, even while another mesh shares them (that mesh uploads them again)
 mesh.material.dispose(); // its textures need their own texture.dispose()
 ```
 
@@ -497,3 +497,4 @@ scene.add(mesh);
 - `threejs-shaders` - ShaderMaterial vertex and fragment code for WebGLRenderer.
 - `threejs-animation` - animating morph target influences and transforms over time.
 - `threejs-loaders` - glTF and other formats that bring their own geometry.
+- `threejs-performance` - choosing between merging, instancing, batching and LOD by measured draw calls.

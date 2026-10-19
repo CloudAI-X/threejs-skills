@@ -1,6 +1,6 @@
 ---
 name: threejs-loaders
-description: "Loading three.js assets: glTF with Draco and KTX2 compression, other model formats, textures, HDR and EXR environments, progress, caching, cloning and disposal. Use when loading 3D models, textures or environment maps, or managing loading progress, on WebGL or with WebGPU and TSL."
+description: "Loading three.js assets: glTF with Draco, meshopt and KTX2 compression, other model formats, textures, HDR and EXR environments, progress, caching, cloning and disposal. Use when loading 3D models, textures or environment maps, or managing loading progress, on WebGL or with WebGPU and TSL."
 ---
 
 # Three.js Loaders
@@ -404,7 +404,7 @@ THREE.Cache.enabled = true;
 THREE.Cache.clear(); // empty it when you need to force reloads
 ```
 
-Keep payloads small — Draco for geometry, KTX2 for textures — and show a placeholder mesh while the real model loads, swapping it in once loading resolves.
+Keep payloads small — Draco or meshopt for geometry, KTX2 for textures, produced as in threejs-asset-pipeline — and show a placeholder mesh while the real model loads, swapping it in once loading resolves.
 
 ## Cloning and Disposal
 
@@ -495,6 +495,6 @@ function animate() { renderer.render(scene, camera); } renderer.setAnimationLoop
 ## See Also
 
 - `threejs-fundamentals` - renderer setup, resize handling and the app scaffold around loaded assets
-- `threejs-textures` - texture properties, color spaces and compression in depth
-- `threejs-materials` - adjusting the materials loaded models come with
+- `threejs-textures` and `threejs-materials` - texture properties and color spaces, and adjusting the materials loaded models come with
+- `threejs-asset-pipeline` - compressing and optimizing glTF files before they reach these loaders
 - `threejs-animation` - AnimationMixer, clips and skinned-mesh playback

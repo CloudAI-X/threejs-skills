@@ -399,18 +399,18 @@ mesh.material.color.set(0xff0000); // uniform values: no recompile needed
 mesh.material.roughness = 0.8;
 
 // material.needsUpdate = true after changing a setting compiled into the shader:
-// transparent, side, blending, flatShading, vertexColors, dithering, premultipliedAlpha,
+// transparent, side, blending, flatShading, vertexColors, dithering, premultipliedAlpha, alphaHash,
 // adding or removing a map slot, or shader source (alphaTest and envMap recompile by themselves)
 
 const clone = mesh.material.clone(); // copies values; map slots share their textures, ShaderMaterial uniforms are cloned
 ```
 
-Dispose a material nothing else uses: `material.dispose()` frees its GPU programs; textures need their own `texture.dispose()`.
+Dispose a material nothing else uses: `material.dispose()` releases its GPU programs, which are deleted once no other material uses them; textures need their own `texture.dispose()`.
 
 Performance, in order of impact:
 
 1. Share one material instance across meshes - the renderer re-uploads material uniforms whenever consecutive draws switch material (identical settings already share one compiled program).
-2. Prefer opaque rendering: transparent materials are drawn back to front without depth writes, so they overdraw and misorder when they intersect; for cutouts, alphaTest keeps the material opaque, so it writes depth and draws correctly in any order.
+2. Prefer opaque rendering: transparent materials are sorted back to front by object and drawn after the opaque ones, still writing depth unless `depthWrite: false`, so stacked layers overdraw and intersecting ones misorder; for cutouts, alphaTest keeps the material opaque, so it draws in the opaque pass, correctly in any order.
 3. Pick the cheapest material that looks right: Basic, then Lambert, Phong, Standard, Physical.
 
 ## WebGPU and TSL

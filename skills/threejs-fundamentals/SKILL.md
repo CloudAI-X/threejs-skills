@@ -476,7 +476,7 @@ renderer.setAnimationLoop(animate);
 - `renderer.outputEncoding = THREE.sRGBEncoding` → `renderer.outputColorSpace = THREE.SRGBColorSpace`: the encoding API no longer exists, and the color-space property already defaults to `SRGBColorSpace`, so the assignment is usually unnecessary.
 - `renderer.physicallyCorrectLights = true` → `const bulb = new THREE.PointLight(0xffffff, 100)`: physically based light units are always on and the `physicallyCorrectLights` and `useLegacyLights` switches no longer exist, so delete the line and give point and spot lights candela intensities that suit their distance (threejs-lighting).
 - `material.envMapIntensity = 0.5` → `scene.environmentIntensity = 0.5`: `envMapIntensity` scales only the material's own `envMap`, not `scene.environment`.
-- `mesh.dispose()` → `mesh.dispose(); mesh.geometry.dispose(); mesh.material.dispose()`: the object-level dispose frees only per-object renderer state, never the shared geometry or material.
+- `mesh.dispose()` → `mesh.dispose(); mesh.geometry.dispose(); for (const value of Object.values(mesh.material)) if (value?.isTexture) value.dispose(); mesh.material.dispose();`: the object-level dispose frees only per-object renderer state, never the geometry, material or textures, and material.dispose() leaves the textures alone too.
 - `import { WebGLCubeRenderTarget } from "three/webgpu"` → `import { CubeRenderTarget } from "three/webgpu"`: `three/webgpu` does not export WebGLCubeRenderTarget, which does not work with WebGPURenderer; keep it for WebGLRenderer.
 - `await renderer.renderAsync(scene, camera)` → `await renderer.init(); renderer.render(scene, camera)`: the async render methods are deprecated in r181; initialize once, then render synchronously in the loop.
 
@@ -491,3 +491,5 @@ renderer.setAnimationLoop(animate);
 - `threejs-loaders` — glTF and other file loaders, async loading patterns.
 - `threejs-shaders` — ShaderMaterial and GLSL on WebGLRenderer, TSL node materials on WebGPURenderer.
 - `threejs-postprocessing` — EffectComposer passes and the WebGPU render pipeline.
+- `threejs-performance` — measuring frame cost and cutting draw calls, memory and fill rate.
+- `threejs-react-three-fiber` — the same scene graph written as React components.
