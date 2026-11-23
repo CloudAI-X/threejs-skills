@@ -16,6 +16,12 @@ With the [skills](https://skills.sh) CLI:
 npx skills add cloudai-x/threejs-skills
 ```
 
+Or with the [GitHub CLI](https://cli.github.com/):
+
+```bash
+gh skill install cloudai-x/threejs-skills
+```
+
 Or manually. Claude Code loads skills from `~/.claude/skills/` (all your projects) or `.claude/skills/` (one project):
 
 ```bash
